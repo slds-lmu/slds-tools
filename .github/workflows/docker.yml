@@ -134,6 +134,11 @@ jobs:
           # The merge job below stitches per-arch digests into tagged manifests.
           outputs: |
             type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          # On the weekly cron, ignore the layer cache entirely so apt /
+          # CRAN / PyPI / npm updates actually flow in. Without this, every
+          # RUN's hash is unchanged and the cron just retags the old image.
+          # Push / PR / dispatch builds keep using the cache for speed.
+          no-cache: ${{ github.event_name == 'schedule' }}
           # Per-platform cache scope so amd64 and arm64 don't overwrite each
           # other's cached layers.
           cache-from: type=gha,scope=${{ matrix.platform }}
