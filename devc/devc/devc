@@ -1,0 +1,741 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Podman dev container wrapper (refactored)
+# UI: devc [options...] [command] [mode] <command-args...>
+#   commands: start | stop | pause | restart | sync | status | shell | cursor | run | env
+#   modes:    install | work | review | quarantine
+#   options:  --image|-i IMG  --projdir|-p DIR  --cwd|-d DIR  --one-off|-1  --help|-h
+
+IMAGE_DEFAULT="devc/base:latest"
+MEM_LIMIT="${DEVC_MEM_LIMIT:-16g}"
+PIDS_LIMIT="${DEVC_PIDS_LIMIT:-20480}"
+REVIEW_PRELUDE='rsync -a --delete /src/ /workspace/ 2>/tmp/rsync.log || echo "Warning: rsync failed" >&2;'
+REVIEW_PRELUDE_EXIT_ON_ERROR='rsync -a --delete /src/ /workspace/ 2>/tmp/rsync.log || (echo "rsync failed for workspace" >&2; exit 1)'
+CONFIG_PRELUDE_RSYNC='for entry in "$@"; do
+  src="${entry#*:}"
+  dst="${src%-cache}"
+  rsync -a --delete "$src/" "$dst" ||  (echo "rsync failed for $src" >&2; exit 1)
+done;'
+CONFIG_PRELUDE_LINK='for entry in "$@"; do
+  src="${entry#*:}"
+  dst="${src%-cache}"
+  rm -rf -- "$dst" || (echo "rm failed for $dst" >&2; exit 1)
+  ln -s -- "$src" "$dst" || (echo "ln -s failed for $src" >&2; exit 1)
+done;'
+
+abs_path() { perl -MCwd=abs_path -e 'print abs_path(shift)' "$1"; }
+hash_short() { printf "%s" "$1" | sha256sum | cut -c1-12; }
+to_hex() { local s="$1"; if command -v xxd >/dev/null 2>&1; then printf '%s' "$s" | xxd -p -c 0; elif command -v hexdump >/dev/null 2>&1; then printf '%s' "$s" | hexdump -v -e '/1 "%02x"'; else printf '%s' "$s" | od -An -tx1 | tr -d ' \n'; fi }
+# Trim leading/trailing ASCII whitespace from a string (uses sed)
+trim_ws() { printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+
+usage_short() {
+  echo "Usage: devc [options...] [command] [mode] <command-args...>" >&2
+  echo "Try 'devc --help' for more information." >&2
+}
+
+usage_help() {
+  cat <<'EOF'
+Usage:
+  devc [options...] [command] [mode] <command-args...>
+
+Commands:
+  start      Ensure container for project/mode is running (sleep infinity)
+  stop       Stop and remove container for project/mode
+  pause      Stop container without removing it (resume with 'start')
+  restart    Stop, remove, and start container fresh
+  sync       Re-run rsync to refresh /workspace (review/quarantine only)
+  status     Show container status; with [mode] show only that container
+  shell      Start container and open interactive shell
+  cursor     Ensure container is running and open Cursor attached to it
+  run        Run a shell command inside the container
+  env        Manage environment variables used for containers (host-stored)
+
+Modes:
+  install    Cache volumes read-write; workdir /home/dev; project mounted rw
+  work       Cache volumes read-only; workdir /workspace; project mounted rw
+  review     All mounts read-only; project at /src; rsync to scratch at /workspace
+  quarantine Like review but with network disabled
+
+Options:
+  -i, --image IMG     Image to use (default auto-detected per project)
+  -p, --projdir DIR   Project directory (absolute or relative to original PWD)
+  -d, --cwd DIR       Change working directory before resolving project
+  -1, --one-off       For shell/run: use one-off run container
+  -h, --help          Show this help and exit
+
+Notes:
+  - For 'status', [mode] is optional; otherwise [mode] is required.
+  - Final PWD must be the project directory or a subdirectory thereof.
+  - 'sync' works only for review|quarantine and reruns rsync to refresh /workspace.
+  - 'cursor' requires the 'cursor' CLI on the host and opens /workspace.
+  - 'env' does not start containers. See 'devc env --help' for usage.
+EOF
+}
+
+# Parse options first (do not perform actions yet)
+ORIG_PWD="$PWD"
+OPT_IMAGE=""
+OPT_PROJDIR=""
+OPT_CWD=""
+ONE_OFF=0
+
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "${1}" in
+    -h|--help)
+      usage_help
+      exit 0
+      ;;
+    -i|--image)
+      [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; }
+      OPT_IMAGE="$2"; shift 2; continue
+      ;;
+    -p|--projdir)
+      [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; }
+      OPT_PROJDIR="$2"; shift 2; continue
+      ;;
+    -d|--cwd)
+      [[ $# -ge 2 ]] || { echo "Missing value for $1" >&2; exit 2; }
+      OPT_CWD="$2"; shift 2; continue
+      ;;
+    -1|--one-off)
+      ONE_OFF=1; shift; continue
+      ;;
+    --)
+      shift; break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage_short
+      exit 2
+      ;;
+    *)
+      ARGS+=("$1"); shift; continue
+      ;;
+  esac
+done
+if [[ $# -gt 0 ]]; then
+  ARGS+=("$@")
+fi
+
+# Evaluate --cwd first
+if [[ -n "$OPT_CWD" ]]; then
+  cd "$OPT_CWD"
+fi
+
+# Resolve project directory
+if [[ -n "$OPT_PROJDIR" ]]; then
+  if [[ "$OPT_PROJDIR" = /* ]]; then
+    PROJ_DIR="$OPT_PROJDIR"
+  else
+    PROJ_DIR="$ORIG_PWD/$OPT_PROJDIR"
+  fi
+else
+  if git_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    PROJ_DIR="$git_root"
+  else
+    PROJ_DIR="$PWD"
+  fi
+fi
+PROJ_DIR="$(abs_path "$PROJ_DIR")"
+
+if [[ ! -d "$PROJ_DIR" ]]; then
+    echo "Error: Project directory does not exist: $PROJ_DIR" >&2
+    exit 2
+fi
+
+# Ensure current directory is within project directory
+CUR_PWD="$(pwd -P)"
+case "$CUR_PWD" in
+  "$PROJ_DIR"|"$PROJ_DIR"/*) ;;
+  *)
+    echo "Error: Current directory ($CUR_PWD) must be within project directory ($PROJ_DIR)." >&2
+    exit 2
+    ;;
+esac
+
+# Relative subpath from project to current dir (may be empty)
+if [[ "$CUR_PWD" == "$PROJ_DIR" ]]; then
+  REL_SUBPATH=""
+else
+  REL_SUBPATH="${CUR_PWD#"$PROJ_DIR"/}"
+fi
+
+# Container base name from project
+CNAME="devc-$(basename "$PROJ_DIR")-$(hash_short "$PROJ_DIR")"
+
+# Detect image if not overridden
+detect_image() {
+  if [[ -f "$PROJ_DIR/pyproject.toml" || -f "$PROJ_DIR/requirements.txt" ]]; then
+    echo "devc/python-base:latest"
+  elif [[ -f "$PROJ_DIR/renv.lock" || -f "$PROJ_DIR/DESCRIPTION" ]]; then
+    echo "devc/r-base:latest"
+  elif [[ -f "$PROJ_DIR/package.json" ]]; then
+    echo "devc/base:latest"
+  elif [[ -f "$PROJ_DIR/Cargo.toml" ]]; then
+    echo "devc/base:latest"
+  else
+    echo "$IMAGE_DEFAULT"
+  fi
+}
+
+# Read optional project config file ($PROJ_DIR/.devc) with key=value pairs.
+# Currently supported key(s):
+#   - image: overrides auto-detected image, but not the --image CLI option.
+CFG_IMAGE=""
+if [[ -f "$PROJ_DIR/.devc" ]]; then
+  while IFS= read -r __line || [[ -n "$__line" ]]; do
+    # Strip inline comments and trim
+    __line="${__line%%#*}"
+    __line="$(trim_ws "$__line")"
+    [[ -z "$__line" ]] && continue
+    # Split key=value (first '='); allow spaces around '='
+    __key="$(trim_ws "${__line%%=*}")"
+    __val="$(trim_ws "${__line#*=}")"
+    case "$__key" in
+      image) CFG_IMAGE="$__val" ;;
+      *) ;; # ignore unknown keys for forward-compatibility
+    esac
+  done < "$PROJ_DIR/.devc"
+fi
+
+# Final image resolution precedence:
+#   1) CLI --image (OPT_IMAGE)
+#   2) .devc: image=...
+#   3) auto-detected
+if [[ -n "$OPT_IMAGE" ]]; then
+  IMAGE="$OPT_IMAGE"
+elif [[ -n "$CFG_IMAGE" ]]; then
+  IMAGE="$CFG_IMAGE"
+else
+  IMAGE="$(detect_image)"
+fi
+
+# Positional parsing: [command] [mode] <command-args...>
+COMMAND="${ARGS[0]:-}"
+if [[ -z "$COMMAND" ]]; then
+  usage_short
+  exit 2
+fi
+
+ALLOWED_COMMANDS=(start stop pause restart sync status shell cursor run env)
+case " $COMMAND " in
+  " start "|" stop "|" pause "|" restart "|" sync "|" status "|" shell "|" cursor "|" run "|" env ") ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    usage_short
+    exit 2
+    ;;
+esac
+
+MODE="${ARGS[1]:-}"
+ALLOWED_MODES=(install work review quarantine)
+is_valid_mode() {
+  case " $1 " in
+    " install "|" work "|" review "|" quarantine ") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [[ "$COMMAND" != "status" && "$COMMAND" != "env" ]]; then
+  if [[ -z "$MODE" ]]; then
+    echo "Missing mode. Expected one of: install|work|review|quarantine" >&2
+    usage_short
+    exit 2
+  fi
+  if ! is_valid_mode "$MODE"; then
+    echo "Invalid mode: $MODE (expected install|work|review|quarantine)" >&2
+    exit 2
+  fi
+fi
+
+# Remaining args for 'run'
+CMD_ARGS=()
+if [[ "$COMMAND" == "status" ]]; then
+  if [[ -n "$MODE" ]] && ! is_valid_mode "$MODE"; then
+    echo "Invalid mode: $MODE (expected install|work|review|quarantine)" >&2
+    exit 2
+  fi
+  CMD_ARGS=("${ARGS[@]:2}")
+else
+  CMD_ARGS=("${ARGS[@]:2}")
+fi
+
+# Helper: names and state
+container_name_for_mode() { echo "${CNAME}-${1}"; }
+container_exists() { podman container exists "$1"; }
+container_running() {
+  [[ "$(podman inspect -f '{{.State.Running}}' "$1" 2>/dev/null || echo false)" == "true" ]]
+}
+scratch_vol_name() { echo "devc_scratch_$(hash_short "$PROJ_DIR")"; }
+
+# Environment management (host-side storage)
+state_base_dir() {
+  if [[ -n "${XDG_STATE_HOME:-}" ]]; then echo "$XDG_STATE_HOME"; else echo "$HOME/.local/state"; fi
+}
+env_store_dir() {
+  local base; base="$(state_base_dir)/devc/env"
+  mkdir -p "$base" 2>/dev/null || true
+  chmod 700 "$base" 2>/dev/null || true
+  printf '%s' "$base"
+}
+known_trustlevels() { printf '%s\n' trusted untrusted; }
+env_file_for_trust() {
+  local trust="$1"
+  local base_name; base_name="$(basename "$PROJ_DIR")"
+  local hash; hash="$(hash_short "$PROJ_DIR")"
+  printf '%s/env-%s-%s-%s' "$(env_store_dir)" "$base_name" "$hash" "$trust"
+}
+trust_for_mode() {
+  case "$1" in
+    work|install)   echo trusted ;;
+    review|quarantine) echo untrusted ;;
+    *) echo untrusted ;;
+  esac
+}
+validate_var_name() { [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; }
+ensure_secure_file() { local f="$1"; touch "$f"; chmod 600 "$f" 2>/dev/null || true; }
+
+# Prevent launching additional 'install' containers if any are already running
+ensure_no_install_running() {
+  local exclude_name="${1:-}"
+  local running
+  running="$(podman ps --format '{{.Names}}' | grep -E '^devc-.*-install($|-)' || true)"
+  if [[ -n "$exclude_name" ]]; then
+    running="$(printf '%s\n' "$running" | grep -v -x "$exclude_name" || true)"
+  fi
+  if [[ -n "$running" ]]; then
+    echo "Error: Refusing to launch 'install' mode container while another 'install' container is running:" >&2
+    echo "  $(printf '%s' "$running" | tr '\n' ' ')" >&2
+    echo "Only one install-mode container may run at a time due to shared cache volumes." >&2
+    exit 1
+  fi
+}
+
+ensure_scratch_volume() {
+  local vol; vol="$(scratch_vol_name)"
+  podman volume exists "$vol" || podman volume create "$vol" >/dev/null
+}
+
+ensure_cache_volumes() {
+  local entry src
+  for entry in "${CACHE_VOLUMES[@]}" "${CONFIG_VOLUMES[@]}"; do
+    src="${entry%%:*}"
+    podman volume exists "$src" || podman volume create "$src" >/dev/null
+  done
+}
+
+# Central cache volumes list: "volume:target"
+CACHE_VOLUMES=(
+  "devc_pip_cache:/home/dev/.cache/pip"
+  "devc_npm_cache:/home/dev/.npm"
+  "devc_virtualenv_cache:/home/dev/.virtualenvs"
+  "devc_conda:/home/dev/conda"
+)
+CONFIG_VOLUMES=(
+  "devc_cursor_dir:/home/dev/.cursor-server-cache"
+  "devc_claude_dir:/home/dev/.claude-cache"
+  "devc_config_dir:/home/dev/.config-cache"
+  "devc_codex_dir:/home/dev/.codex-cache"
+  "devc_uv_cache:/home/dev/.cache/uv-cache"
+  "devc_precommit_cache:/home/dev/.cache/pre-commit-cache"
+  "devc_local:/home/dev/.local-cache"
+  "devc_rpackages_cache:/home/dev/R-cache"
+  "devc_renv_cache:/home/dev/.cache/R-cache"
+)
+
+add_cache_mounts() {
+  local rwmode="$1"  # ro|rw
+  local out_var="$2"
+  local -n __arr_ref="$out_var"
+  local entry src target
+  ensure_cache_volumes
+  for entry in "${CACHE_VOLUMES[@]}" "${CONFIG_VOLUMES[@]}"; do
+    src="${entry%%:*}"; target="${entry#*:}"
+    __arr_ref+=( --mount=type=volume,src="$src",target="$target",${rwmode},relabel=shared )
+  done
+}
+
+# Compute container cwd based on mode and relative subpath
+container_target_dir() {
+  local mode="$1"; local out_var="$2"; local -n __out_ref="$out_var"
+  case "$mode" in
+    install)
+      __out_ref="/home/dev"  # unchanged in 'install' mode for safety
+      ;;
+    *)
+      if [[ -n "$REL_SUBPATH" ]]; then __out_ref="/workspace/$REL_SUBPATH"; else __out_ref="/workspace"; fi
+      ;;
+  esac
+}
+
+# Build podman run args into provided array variable name
+build_run_args() {
+  # note that --workdir can not be part here, since it is sometimes passed as argument, sometimes used as part of the
+  # bash command after rsyncing.
+  local mode="$1"
+  local out_var="$2"
+  local -n __arr_ref="$out_var"
+  __arr_ref=(
+    --userns=keep-id:uid=1000,gid=1000
+    --cap-drop=ALL --security-opt=no-new-privileges
+    --pids-limit="$PIDS_LIMIT" --memory="$MEM_LIMIT"
+    --ipc=private --uts=private --cgroupns=private
+  )
+  if [[ "$mode" == "quarantine" ]]; then
+    __arr_ref+=(--network none)
+  fi
+  case "$mode" in
+    work)
+      __arr_ref+=( --mount=type=bind,src="$PROJ_DIR",target=/workspace,rw,z )
+      add_cache_mounts ro "$out_var"
+      ;;
+    install)
+      __arr_ref+=( --mount=type=bind,src="$PROJ_DIR",target=/workspace,rw,z )
+      add_cache_mounts rw "$out_var"
+      ;;
+    review|quarantine)
+      ensure_scratch_volume
+      local scratch_vol; scratch_vol="$(scratch_vol_name)"
+      __arr_ref+=(
+        --mount=type=bind,src="$PROJ_DIR",target=/src,ro,z
+        --mount=type=volume,src="$scratch_vol",target=/workspace
+      )
+      add_cache_mounts ro "$out_var"
+      ;;
+  esac
+  # Add env-file for the trust level of this mode, if present
+  local trust; trust="$(trust_for_mode "$mode")"
+  local envf; envf="$(env_file_for_trust "$trust")"
+  if [[ -f "$envf" ]]; then
+    __arr_ref+=( --env-file "$envf" )
+  fi
+}
+
+PODMAN_INTERACTIVE_ARGS="--detach-keys ctrl-q,ctrl-q"
+
+ensure_running_container() {
+  local mode="$1"; local name; name="$(container_name_for_mode "$mode")"
+  if container_running "$name"; then return 0; fi
+  # Prevent multiple concurrent 'install' containers across projects
+  if [[ "$mode" == "install" ]]; then
+    ensure_no_install_running "$name"
+  fi
+  if container_exists "$name"; then
+    podman start "$name" >/dev/null
+    return 0
+  fi
+  local -a args=()
+  build_run_args "$mode" args
+  # Always create containers with a simple long-running command
+  podman run -d --init --name "$name" \
+    "${args[@]}" \
+    "$IMAGE" sleep infinity
+  if [[ "$mode" == "install" ]]; then
+    podman exec "$name" bash -lc "$CONFIG_PRELUDE_LINK" _ "${CONFIG_VOLUMES[@]}"
+  else
+    podman exec "$name" bash -lc "$CONFIG_PRELUDE_RSYNC" _ "${CONFIG_VOLUMES[@]}"
+  fi
+  # For review/quarantine, perform initial one-time rsync into scratch volume
+  case "$mode" in
+    review|quarantine)
+      podman exec "$name" bash -lc "$REVIEW_PRELUDE"
+      ;;
+  esac
+}
+
+exec_shell_in_container() {
+  local mode="$1"; local name; name="$(container_name_for_mode "$mode")"
+  local target
+  container_target_dir "$mode" target
+  podman exec -it $PODMAN_INTERACTIVE_ARGS --workdir "$target" "$name" bash -l
+}
+
+join_cmd() {
+  local out="" first=1 arg esc
+  for arg in "$@"; do
+    printf -v esc '%q' "$arg"
+    if [[ $first -eq 1 ]]; then
+      out="$esc"; first=0
+    else
+      out+=" $esc"
+    fi
+  done
+  printf '%s' "$out"
+}
+
+exec_run_in_container() {
+  local mode="$1"; shift
+  local name; name="$(container_name_for_mode "$mode")"
+  local cmd; cmd="$(join_cmd "$@")"
+  local target; container_target_dir "$mode" target
+  podman exec -it $PODMAN_INTERACTIVE_ARGS --workdir "$target" "$name" bash -lc "$cmd"
+}
+
+one_off_shell() {
+  local mode="$1"; local name; name="$(container_name_for_mode "$mode")"
+  local one_off_name="${name}-oneoff-$$"
+  # Prevent one-off launch if any install container is already running
+  if [[ "$mode" == "install" ]]; then
+    ensure_no_install_running
+  fi
+  local -a args=()
+  build_run_args "$mode" args
+  local target; container_target_dir "$mode" target
+  case "$mode" in
+    review|quarantine)
+      # cannot --workdir to target dir because it may not exist before REVIEW_PRELUDE.
+      podman run --rm -it $PODMAN_INTERACTIVE_ARGS --name "$one_off_name" \
+        "${args[@]}" \
+        "$IMAGE" bash -lc "$REVIEW_PRELUDE $CONFIG_PRELUDE_RSYNC cd $(printf %q "$target"); exec bash -l" _ "${CONFIG_VOLUMES[@]}"
+      ;;
+    install)
+      # link configs
+      # also
+      podman run --rm -it $PODMAN_INTERACTIVE_ARGS --workdir "$target" --name "$one_off_name" \
+        "${args[@]}" \
+        "$IMAGE" bash -lc "$CONFIG_PRELUDE_LINK exec bash -l" _ "${CONFIG_VOLUMES[@]}"
+      ;;
+    *)
+      podman run --rm -it $PODMAN_INTERACTIVE_ARGS --workdir "$target" --name "$one_off_name" \
+        "${args[@]}" \
+        "$IMAGE" bash -lc "$CONFIG_PRELUDE_RSYNC exec bash -l" _ "${CONFIG_VOLUMES[@]}"
+      ;;
+  esac
+}
+
+one_off_run() {
+  local mode="$1"; shift
+  local name; name="$(container_name_for_mode "$mode")-oneoff-$$"
+  # Prevent one-off launch if any install container is already running
+  if [[ "$mode" == "install" ]]; then
+    ensure_no_install_running
+  fi
+  local -a args=()
+  build_run_args "$mode" args
+  local cmd; cmd="$(join_cmd "$@")"
+  local target; container_target_dir "$mode" target
+  case "$mode" in
+    review|quarantine)
+      # cannot --workdir to target dir because it may not exist before REVIEW_PRELUDE.
+      # we always link, one-off commands don't get to modify config files in non-install-modes
+      podman run --rm -it --name "$name" \
+        "${args[@]}" \
+        "$IMAGE" bash -lc "$REVIEW_PRELUDE_EXIT_ON_ERROR $CONFIG_PRELUDE_LINK cd $(printf %q "$target"); $cmd"
+      ;;
+    *)
+      podman run --rm -it --workdir "$target" --name "$name" \
+        "${args[@]}" \
+        "$IMAGE" bash -lc "$CONFIG_PRELUDE_LINK $cmd"
+      ;;
+  esac
+}
+
+status_one() {
+  local mode="$1"; local name; name="$(container_name_for_mode "$mode")"
+  if container_exists "$name"; then
+    podman ps -a --filter "name=$name" --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
+  else
+    printf "%s\t%s\t%s\n" "$name" "<absent>" "$IMAGE"
+  fi
+}
+
+# Validate contradictory options
+if [[ "$ONE_OFF" -eq 1 && ( "$COMMAND" == "start" || "$COMMAND" == "stop" || "$COMMAND" == "pause" || "$COMMAND" == "restart" || "$COMMAND" == "sync" || "$COMMAND" == "status" || "$COMMAND" == "cursor" ) ]]; then
+  echo "--one-off is only valid with 'shell' or 'run'." >&2
+  exit 2
+fi
+
+# Reject unexpected extra positional arguments per command
+case "$COMMAND" in
+  status)
+    if (( ${#ARGS[@]} > 2 )); then
+      extras=("${ARGS[@]:2}")
+      echo "Unexpected arguments for 'status': ${extras[*]}" >&2
+      usage_short
+      exit 2
+    fi
+    ;;
+  start|stop|pause|restart|sync|shell|cursor)
+    if (( ${#ARGS[@]} > 2 )); then
+      extras=("${ARGS[@]:2}")
+      echo "Unexpected arguments for '$COMMAND': ${extras[*]}" >&2
+      usage_short
+      exit 2
+    fi
+    ;;
+  run)
+    if (( ${#ARGS[@]} < 3 )); then
+      echo "Missing command to run." >&2
+      usage_short
+      exit 2
+    fi
+    ;;
+  env)
+    : # subcommand-specific validation later
+    ;;
+esac
+
+case "$COMMAND" in
+  env)
+    # Subcommands: add <trust|all> VAR=VALUE | del <trust|all> VAR | list [<trust|all>]
+    subcmd="${ARGS[1]:-}"
+    case "$subcmd" in
+      -h|--help|"")
+        cat <<'EOENV'
+Usage:
+  devc env add <trust|all> VAR=VALUE   Add or update variable
+  devc env del <trust|all> VAR         Remove variable
+  devc env list [<trust|all>]          List variables (default: all)
+
+Notes:
+  - trust levels: trusted (work/install), untrusted (review/quarantine), or all.
+  - Values are stored per project at: $(XDG_STATE_HOME or ~/.local/state)/devc/env
+  - Changes apply to new containers; restart existing containers to pick them up.
+EOENV
+        exit 0
+        ;;
+      add)
+        tl="${ARGS[2]:-}"
+        kv="${ARGS[3]:-}"
+        if [[ -z "$tl" || -z "$kv" ]]; then echo "Usage: devc env add <trust|all> VAR=VALUE" >&2; exit 2; fi
+        if [[ "$kv" != *=* ]]; then echo "Expected VAR=VALUE" >&2; exit 2; fi
+        var="${kv%%=*}"; val="${kv#*=}"
+        if ! validate_var_name "$var"; then echo "Invalid variable name: $var" >&2; exit 2; fi
+        mapfile -t tls < <(
+          if [[ "$tl" == all ]]; then known_trustlevels; else printf '%s\n' "$tl"; fi
+        )
+        for t in "${tls[@]}"; do
+          f="$(env_file_for_trust "$t")"; ensure_secure_file "$f"
+          # Replace any existing entry for VAR, then append new
+          tmp="${f}.tmp.$$"
+          { grep -E -v "^${var}=" "$f" 2>/dev/null || true; echo "${var}=${val}"; } > "$tmp"
+          mv "$tmp" "$f"
+          chmod 600 "$f" 2>/dev/null || true
+          echo "[$t] set $var"
+        done
+        ;;
+      del)
+        tl="${ARGS[2]:-}"; var="${ARGS[3]:-}"
+        if [[ -z "$tl" || -z "$var" ]]; then echo "Usage: devc env del <trust|all> VAR" >&2; exit 2; fi
+        if ! validate_var_name "$var"; then echo "Invalid variable name: $var" >&2; exit 2; fi
+        mapfile -t tls < <(
+          if [[ "$tl" == all ]]; then known_trustlevels; else printf '%s\n' "$tl"; fi
+        )
+        for t in "${tls[@]}"; do
+          f="$(env_file_for_trust "$t")"
+          if [[ -f "$f" ]]; then
+            tmp="${f}.tmp.$$"
+            grep -E -v "^${var}=" "$f" > "$tmp" || true
+            mv "$tmp" "$f"
+            chmod 600 "$f" 2>/dev/null || true
+            echo "[$t] removed $var"
+          else
+            echo "[$t] no env file; nothing to remove" >&2
+          fi
+        done
+        ;;
+      list)
+        tl="${ARGS[2]:-all}"
+        mapfile -t tls < <(
+          if [[ "$tl" == all ]]; then known_trustlevels; else printf '%s\n' "$tl"; fi
+        )
+        for t in "${tls[@]}"; do
+          f="$(env_file_for_trust "$t")"
+          echo "${t}:"
+          if [[ -f "$f" ]]; then
+            sed -e 's/^/  /' "$f"
+          else
+            echo "  <empty>"
+          fi
+        done
+        ;;
+      *)
+        echo "Unknown 'env' subcommand: $subcmd" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  status)
+    if [[ -z "${MODE:-}" ]]; then
+      for m in install work review quarantine; do
+        status_one "$m"
+      done
+    else
+      status_one "$MODE"
+    fi
+    ;;
+  start)
+    ensure_running_container "$MODE"
+    ;;
+  stop)
+    name="$(container_name_for_mode "$MODE")"
+    if container_exists "$name"; then
+      podman stop "$name" >/dev/null || true
+      podman rm "$name" >/dev/null || true
+    fi
+    ;;
+  pause)
+    name="$(container_name_for_mode "$MODE")"
+    if container_exists "$name"; then
+      podman stop "$name" >/dev/null || true
+    fi
+    ;;
+  restart)
+    name="$(container_name_for_mode "$MODE")"
+    if container_exists "$name"; then
+      podman stop "$name" >/dev/null || true
+      podman rm "$name" >/dev/null || true
+    fi
+    ensure_running_container "$MODE"
+    ;;
+  sync)
+    case "$MODE" in
+      review|quarantine) ;;
+      *)
+        echo "'sync' is only supported for 'review' and 'quarantine' modes." >&2
+        exit 2
+        ;;
+    esac
+    ensure_running_container "$MODE"
+    name="$(container_name_for_mode "$MODE")"
+    # Re-run rsync and exit non-zero on failure
+    podman exec "$name" bash -lc "$REVIEW_PRELUDE_EXIT_ON_ERROR"
+    ;;
+  shell)
+    name="$(container_name_for_mode "$MODE")"
+    if [[ "$ONE_OFF" -eq 1 ]]; then
+      one_off_shell "$MODE"
+    else
+      ensure_running_container "$MODE"
+      exec_shell_in_container "$MODE"
+    fi
+    ;;
+  cursor)
+    # Ensure container is running, then open Cursor attached-container to /workspace
+    ensure_running_container "$MODE"
+    name="$(container_name_for_mode "$MODE")"
+    hex_name="$(to_hex "$name")"
+    if ! command -v cursor >/dev/null 2>&1; then
+      echo "Error: 'cursor' CLI not found on host PATH." >&2
+      echo "Install Cursor CLI and try again." >&2
+      exit 1
+    fi
+    if [[ "$MODE" == "install" ]]; then
+      cursor --new-window --file-uri "vscode-remote://attached-container+${hex_name}/"
+    else
+      cursor --folder-uri "vscode-remote://attached-container+${hex_name}/workspace"
+    fi
+    ;;
+  run)
+    name="$(container_name_for_mode "$MODE")"
+    if [[ "$ONE_OFF" -eq 1 ]]; then
+      one_off_run "$MODE" "${CMD_ARGS[@]}"
+    else
+      ensure_running_container "$MODE"
+      exec_run_in_container "$MODE" "${CMD_ARGS[@]}"
+    fi
+    ;;
+esac

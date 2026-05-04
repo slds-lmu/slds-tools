@@ -1,0 +1,84 @@
+# object files
+
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+*.pyo
+
+# compressed files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+*.msi
+*.rds
+
+# logs, databases
+*.log
+*.sql
+*.sqlite
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temp files
+*.bak
+*.swp
+*.swo
+*~
+*#
+.#*
+\#*#
+
+# IDE files
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.idea
+.iml
+*.sublime-workspace
+
+# Local History for Visual Studio Code
+.history/
+
+# R files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+
+# Example code in package build process
+*-Ex.R
+
+# OAuth2 token
+.httr-oauth
+
+# tex intermediate files
+*.aux
+*.bbl
+*.blg
+*.dvi
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+

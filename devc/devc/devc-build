@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: devc-build [options] name[:tag]
+
+Builds devc images from the podman-dev-images directory.
+
+Arguments:
+  name[:tag]   Image name (must match a Dockerfile) and optional tag. Defaults to :latest.
+
+All other arguments are passed directly to podman build before the auto-generated flags.
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 64
+fi
+
+if [[ ($# -eq 1) && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+  usage
+  exit 0
+fi
+
+image_spec="${!#}"
+if [[ "$image_spec" == -* ]]; then
+  echo "Error: image name must be provided as the last argument." >&2
+  usage
+  exit 64
+fi
+
+if [[ "$image_spec" == *:* ]]; then
+  image_name="${image_spec%%:*}"
+  image_tag="${image_spec#*:}"
+  if [[ -z "$image_tag" ]]; then
+    echo "Error: tag cannot be empty when specifying name:tag." >&2
+    exit 64
+  fi
+else
+  image_name="$image_spec"
+  image_tag="latest"
+fi
+
+if [[ -z "$image_name" ]]; then
+  echo "Error: image name cannot be empty." >&2
+  exit 64
+fi
+
+# Resolve the real directory of this script, following symlinks.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$dir/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+dockerfile="${REPO_ROOT}/podman-dev-images/${image_name}.Dockerfile"
+if [[ ! -f "$dockerfile" ]]; then
+  echo "Error: Dockerfile not found for image '${image_name}' at ${dockerfile}." >&2
+  exit 66
+fi
+
+podman_args=("${@:1:$#-1}")
+
+set -x
+podman build "${podman_args[@]}" \
+  -f "$dockerfile" \
+  --build-arg "TAG=${image_tag}" \
+  -t "devc/${image_name}:${image_tag}" \
+  --label com.mb706.project=devc \
+  "${REPO_ROOT}/podman-dev-images"

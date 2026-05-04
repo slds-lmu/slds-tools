@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: devc-ls [options]
+
+Shows Podman images labeled with com.mb706.project=devc.
+
+Options:
+  -c, --csv        Output CSV (comma-separated) instead of a table.
+      --no-header  Omit the header row for script-friendly consumption.
+  -h, --help       Show this help message and exit.
+EOF
+}
+
+CSV=0
+NO_HEADER=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -c|--csv)
+      CSV=1
+      shift
+      ;;
+    --no-header)
+      NO_HEADER=1
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 64
+      ;;
+  esac
+done
+
+print_header() {
+  local header="$1"
+  if [[ $NO_HEADER -eq 0 ]]; then
+    printf '%s\n' "$header"
+  fi
+}
+
+emit_images() {
+  local format="$1"
+  podman images \
+    --filter label=com.mb706.project=devc \
+    --format "$format" | \
+    sed 's|^localhost/||'
+}
+
+if [[ $CSV -eq 1 ]]; then
+  print_header 'image,created_at,age,containers'
+  emit_images '{{.Repository}}:{{.Tag}},{{.CreatedAt}},{{.CreatedSince}},{{.Containers}}'
+else
+  {
+    print_header $'IMAGE\tCREATED AT\tAGE\tCONTAINERS'
+    emit_images '{{.Repository}}:{{.Tag}}\t{{.CreatedAt}}\t{{.CreatedSince}}\t{{.Containers}}'
+  } | column -t -s $'\t'
+fi

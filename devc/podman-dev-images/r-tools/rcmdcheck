@@ -1,0 +1,3 @@
+#!/bin/bash
+
+TESTTHAT_CPUS=16 _R_CHECK_CRAN_INCOMING_=false _R_CHECK_CRAN_INCOMING_REMOTE_=false NOT_CRAN=true R CMD check --as-cran $*

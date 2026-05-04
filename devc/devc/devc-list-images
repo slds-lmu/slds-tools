@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: devc-list-images
+
+Lists image names derived from *.Dockerfile files under podman-dev-images.
+EOF
+}
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: no arguments supported." >&2
+      usage
+      exit 64
+      ;;
+  esac
+fi
+
+# Resolve the real directory of this script, following symlinks.
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  dir="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$dir/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+IMG_DIR="${REPO_ROOT}/podman-dev-images"
+
+if [[ ! -d "$IMG_DIR" ]]; then
+  echo "Error: podman-dev-images directory not found at ${IMG_DIR}." >&2
+  exit 66
+fi
+
+shopt -s nullglob
+dockerfiles=("$IMG_DIR"/*.Dockerfile)
+
+for file in "${dockerfiles[@]}"; do
+  name="$(basename "$file")"
+  printf '%s\n' "${name%.Dockerfile}"
+done

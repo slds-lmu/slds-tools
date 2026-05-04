@@ -1,0 +1,53 @@
+{
+  "name": "generic-python",
+  "build": {
+    "dockerfile": "Containerfile",
+    "args": {
+      "PYTHON_VERSION": "3.12"
+    }
+  },
+
+  // Use a dynamic host path as the container's workspace.
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localEnv:WORKSPACE},target=/workspace,type=bind",
+
+  // Speed up installs; keep cache outside the container
+  "mounts": [
+    "type=volume,source=py-pip-cache,target=/home/dev/.cache/pip",
+    "type=volume,source=py-venv-cache,target=/home/dev/.venv"
+  ],
+
+  // Run as an unprivileged user inside the container; adjust UID/GID to yours
+  "containerUser": "dev",
+  "updateRemoteUserUID": true,
+
+  // Hardened run args; compatible with rootless Podman
+  "runArgs": [
+    "--userns=keep-id",
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges",
+    "--pids-limit=2048",
+    "--read-only",
+    "--tmpfs=/tmp:exec",
+    "--tmpfs=/run",
+    "--mount=type=tmpfs,target=/home/dev/.cache"
+  ],
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "github.vscode-pull-request-github"
+      ]
+    }
+  },
+
+  "postCreateCommand": "python -m venv /home/dev/.venv && /home/dev/.venv/bin/pip install -U pip"
+}
+
