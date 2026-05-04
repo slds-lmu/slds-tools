@@ -3,3 +3,13 @@
 we need to look at how we start containers, but also resume them, especially if something 
 in between was installed, e.g. a missing R package
 --> we also need to doc this
+
+
+how long does to take to create a downstream image? really doc that for users
+
+finish and check docker-README
+
+use the posit public PM and ensure binaries are used
+
+when something fails, stop the build? why would we go on?
+
