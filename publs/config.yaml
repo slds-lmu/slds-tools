@@ -1,0 +1,28 @@
+# Global configuration for the publs scraper.
+# Paths are relative to this file.
+
+# Where the JSON cache (one file per member) lives.
+cache_dir: cache
+
+# Where the rendered .bib files are written (one per member).
+output_dir: out
+
+# Drop publications older than this year. Set to null to keep everything.
+min_year: 2015
+
+# Cache freshness in days. `publs fetch` skips members whose cache is younger
+# than this unless --force is passed. Set to 0 to always refetch.
+cache_ttl_days: 7
+
+# Anti-blocking strategy for Google Scholar.
+#   none -> direct requests (will get rate-limited on bigger groups)
+#   free -> scholarly's FreeProxies (free pool; flaky and currently broken
+#           against modern httpx — falls back to `none` with a warning if it
+#           can't initialize)
+proxy: none
+
+# Polite delay between members (seconds). Cuts down on burst patterns.
+delay_between_members: 5
+
+# Slugify rule for output filenames. Defaults to lastname-firstname lowercase.
+filename_style: lastname_firstname

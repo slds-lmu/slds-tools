@@ -1,0 +1,104 @@
+# SLDS members and their Google Scholar IDs.
+#
+# Seeded from https://www.slds.stat.uni-muenchen.de/people/ on 2026-05-04.
+# You MUST fill in `scholar_id` for each member you want included. Members with
+# `scholar_id: null` are skipped (with a warning) by `publs fetch`.
+#
+# How to find a Scholar ID:
+#   1. Open the person's Google Scholar profile.
+#   2. The URL looks like https://scholar.google.com/citations?user=ABCDEF1234&hl=en
+#   3. The value of `user=` is the scholar_id.
+#
+# Optional fields:
+#   include: false   -> skip this member entirely (e.g., admins, alumni)
+#   role: free text  -> just for your bookkeeping; not used by the scraper
+
+members:
+  # --- Leadership ---
+  - name: Bernd Bischl
+    role: Chair
+    scholar_id: s34UckkAAAAJ
+  - name: Fabian Fumagalli
+    role: Thomas Bayes Fellow / MCML
+    scholar_id: null
+
+  # --- PostDocs ---
+  - name: Matthias Aßenmacher
+    role: PostDoc / BERD
+    scholar_id: null
+  - name: Andreas Bender
+    role: Senior Lecturer / MCML
+    scholar_id: null
+  - name: Ludwig Bothmann
+    role: PostDoc / Lecturer
+    scholar_id: null
+  - name: Giuseppe Casalicchio
+    role: PostDoc / MCML
+    scholar_id: null
+  - name: Juliane Lauks
+    role: PostDoc / Scientific Manager
+    scholar_id: null
+  - name: Mina Rezaei
+    role: PostDoc / MCML
+    scholar_id: null
+
+  # --- Research Staff ---
+  - name: Marc Becker
+    role: Research Software Engineer
+    scholar_id: null
+
+  # --- PhD Students ---
+  - name: Helen Alber
+    role: PhD
+    scholar_id: null
+  - name: Salem Ayadi
+    role: PhD
+    scholar_id: null
+  - name: Martin Binder
+    role: PhD
+    scholar_id: null
+  - name: Coco Bögel
+    role: PhD
+    scholar_id: null
+  - name: Philip Boustani
+    role: PhD
+    scholar_id: null
+  - name: Stefan Coors
+    role: PhD
+    scholar_id: null
+  - name: Fiona Katharina Ewald
+    role: PhD
+    scholar_id: null
+  - name: Sebastian Fischer
+    role: PhD
+    scholar_id: null
+  - name: Esteban Garces Arias
+    role: PhD (external collaborator)
+    scholar_id: null
+  - name: Timo Heiß
+    role: PhD
+    scholar_id: null
+  - name: Yawei Li
+    role: PhD
+    scholar_id: null
+  - name: Florian Karl
+    role: PhD
+    scholar_id: null
+  - name: Chris Kolb
+    role: PhD
+    scholar_id: null
+  - name: Philipp Kopper
+    role: PhD
+    scholar_id: null
+  - name: David Rundel
+    role: PhD
+    scholar_id: null
+  - name: Theresa Stüber
+    role: PhD
+    scholar_id: null
+  - name: Xiao-Yin To
+    role: PhD
+    scholar_id: null
+  - name: Zizheng Zhang
+    role: PhD
+    scholar_id: null
