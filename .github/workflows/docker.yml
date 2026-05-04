@@ -1,0 +1,152 @@
+# Purpose: Build the docker/default image and push it to GitHub Container
+#          Registry (ghcr.io/slds-lmu/default) on every relevant change.
+#
+# Triggers:
+#   - push to main when docker/default/** or this workflow file changes
+#     -> builds AND pushes to ghcr.io
+#   - pull_request against main with the same path filter
+#     -> builds only (no push) so we know the Dockerfile still works before merge
+#   - manual dispatch from the Actions tab (workflow_dispatch)
+#     -> builds AND pushes
+#   - weekly cron, so the image picks up upstream R / CRAN / apt / npm updates
+#     even when nothing in the repo has changed
+#     -> builds AND pushes
+#
+# Tags pushed per build (must stay in sync with docker/default/README.md):
+#   :latest         - moves with every build (default-branch only)
+#   :<git-sha>      - immutable per commit
+#   :YYYY-MM-DD     - human-readable snapshot (default-branch only)
+#
+# Required secrets: none — GITHUB_TOKEN (auto-issued per run) is sufficient
+# for ghcr.io pushes within the same org.
+
+# Display name in the Actions tab and on PR check lists.
+name: Build and push docker images
+
+on:
+  # Build + push on every commit to main that touches the image or workflow.
+  push:
+    # Restrict to the default branch; feature-branch pushes don't run.
+    branches: [main]
+    # Path filter: don't burn CI minutes when the change is unrelated to the
+    # image (e.g. publs/, repo-level READMEs, AGENTS.md).
+    paths:
+      - "docker/default/**"
+      - ".github/workflows/docker.yml"
+
+  # Build (no push) on PRs against main — fail fast if the Dockerfile broke.
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/default/**"
+      - ".github/workflows/docker.yml"
+
+  # Manual trigger from the Actions tab (handy for re-runs after a flaky build,
+  # or when you want to force-refresh :latest without a real change).
+  workflow_dispatch:
+
+  # Weekly rebuild so upstream apt/CRAN/PyPI/npm updates flow into :latest
+  # without anyone needing to push a no-op commit.
+  schedule:
+    - cron: "0 3 * * 0"  # Sunday 03:00 UTC
+
+# GITHUB_TOKEN scopes for this run. Defaults are restrictive; we opt in to
+# what we actually need.
+permissions:
+  contents: read    # actions/checkout needs to read the repo
+  packages: write   # docker/build-push-action needs to push to ghcr.io
+
+jobs:
+  # Single job — builds and (optionally) pushes the docker/default image.
+  # When a second image is added, copy this job and adjust `context:` + the
+  # `images:` reference, or convert to a matrix.
+  build-default:
+    # Display name shown in the Actions UI per run.
+    name: Build and push default
+    # ubuntu-24.04 = current GitHub-hosted runner image. Picked over older
+    # versions for newer Docker/buildx and slightly more free disk; the
+    # runner OS is independent of the image's noble base.
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Brings the repo onto the runner so docker/default/* is available
+      # as the build context.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Default runners have ~25 GB free; this image is ~8 GB and the build
+      # context plus apt downloads push us close to the limit. Removing
+      # pre-installed toolchains we don't need buys ~10-15 GB.
+      - name: Free up runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          df -h /
+
+      # Required for GHA layer caching (`type=gha`) and for the modern
+      # build-push-action's BuildKit features.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        # Skipped on pull_request — we don't push, so no creds needed.
+        # Also avoids needing write permissions on PRs from forks.
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          # The registry hostname; ghcr.io = GitHub Container Registry.
+          registry: ghcr.io
+          # github.actor is the user/app that triggered the run. Required
+          # by docker/login-action; the actual auth uses the token below.
+          username: ${{ github.actor }}
+          # Auto-issued per run, scoped by the `permissions:` block above.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generates the list of `image:tag` strings the build step will use,
+      # plus standard OCI labels (org.opencontainers.image.{revision,...}).
+      - name: Compute image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Base image reference; the tags below are appended to it.
+          images: ghcr.io/${{ github.repository_owner }}/default
+          # Each line is one tag rule. Order doesn't matter; all matching
+          # rules emit a tag.
+          tags: |
+            # :latest — only on default-branch builds, never on PRs/features.
+            type=raw,value=latest,enable={{is_default_branch}}
+            # :<short-sha> (e.g. :abc1234) — emitted on every event;
+            # this is the immutable handle the README tells users to pin to.
+            type=sha,prefix=
+            # :YYYY-MM-DD (e.g. :2026-05-04) — only on default-branch builds;
+            # human-readable snapshot handle.
+            type=raw,value={{date 'YYYY-MM-DD'}},enable={{is_default_branch}}
+
+      - name: Build (and push on non-PR events)
+        uses: docker/build-push-action@v6
+        with:
+          # Build context = the directory containing the Dockerfile.
+          # Buildx reads docker/default/Dockerfile by default.
+          context: docker/default
+          # On pull_request we build but do NOT push — the build itself is the
+          # gate. On push / dispatch / schedule we push to ghcr.io.
+          push: ${{ github.event_name != 'pull_request' }}
+          # Tag list and OCI label set produced by metadata-action above.
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache backend: re-uses unchanged layers across
+          # runs (texlive-full, R packages, etc.). 10 GB total cap per repo;
+          # mode=max stores all intermediate layers (vs. just the final one).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Echoes what was (or would have been) pushed, so the Actions run
+      # summary tells you at a glance which tags this commit produced.
+      - name: Print resulting tags
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "PR build — image was built but not pushed. Tags that would have been used:"
+          else
+            echo "Pushed:"
+          fi
+          echo "${{ steps.meta.outputs.tags }}"
