@@ -20,85 +20,85 @@ members:
     scholar_id: s34UckkAAAAJ
   - name: Fabian Fumagalli
     role: Thomas Bayes Fellow / MCML
-    scholar_id: null
+    scholar_id: anUMB08AAAAJ
 
   # --- PostDocs ---
   - name: Matthias Aßenmacher
     role: PostDoc / BERD
-    scholar_id: null
+    scholar_id: qmQ-l84AAAAJ
   - name: Andreas Bender
     role: Senior Lecturer / MCML
-    scholar_id: null
+    scholar_id: pYXcdVQAAAAJ
   - name: Ludwig Bothmann
     role: PostDoc / Lecturer
-    scholar_id: null
+    scholar_id: TYrvJm0AAAAJ
   - name: Giuseppe Casalicchio
     role: PostDoc / MCML
-    scholar_id: null
+    scholar_id: MHcaZMQAAAAJ
   - name: Juliane Lauks
     role: PostDoc / Scientific Manager
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Mina Rezaei
     role: PostDoc / MCML
-    scholar_id: null
+    scholar_id: gwQH-xUAAAAJ
 
   # --- Research Staff ---
   - name: Marc Becker
     role: Research Software Engineer
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
 
   # --- PhD Students ---
   - name: Helen Alber
     role: PhD
-    scholar_id: null
+    scholar_id: d_z5QBwAAAAJ
   - name: Salem Ayadi
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Martin Binder
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Coco Bögel
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Philip Boustani
     role: PhD
-    scholar_id: null
+    scholar_id: CSQxANkAAAAJ
   - name: Stefan Coors
     role: PhD
-    scholar_id: null
+    scholar_id: bOLYKOgAAAAJ
   - name: Fiona Katharina Ewald
     role: PhD
-    scholar_id: null
+    scholar_id: lvEHATwAAAAJ
   - name: Sebastian Fischer
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Esteban Garces Arias
     role: PhD (external collaborator)
-    scholar_id: null
+    scholar_id: null   # no SLDS profile page
   - name: Timo Heiß
     role: PhD
-    scholar_id: null
+    scholar_id: JY0MV5wAAAAJ
   - name: Yawei Li
     role: PhD
-    scholar_id: null
+    scholar_id: q8A2tT8AAAAJ
   - name: Florian Karl
     role: PhD
-    scholar_id: null
+    scholar_id: k-ZyY8EAAAAJ
   - name: Chris Kolb
     role: PhD
-    scholar_id: null
+    scholar_id: "-TLXpk0AAAAJ"   # quoted: starts with hyphen
   - name: Philipp Kopper
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: David Rundel
     role: PhD
-    scholar_id: null
+    scholar_id: null   # no Scholar link on SLDS profile
   - name: Theresa Stüber
     role: PhD
-    scholar_id: null
+    scholar_id: KSptwhEAAAAJ
   - name: Xiao-Yin To
     role: PhD
-    scholar_id: null
+    scholar_id: WYhNvMQAAAAJ
   - name: Zizheng Zhang
     role: PhD
-    scholar_id: null
+    scholar_id: LrC-zwUAAAAJ

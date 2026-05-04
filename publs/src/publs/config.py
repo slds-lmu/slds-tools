@@ -31,6 +31,7 @@ class Settings:
     cache_ttl_days: int
     proxy: str
     delay_between_members: float
+    delay_between_pubs: float
     filename_style: str
 
     @classmethod
@@ -50,6 +51,7 @@ class Settings:
             cache_ttl_days=int(raw.get("cache_ttl_days", 7)),
             proxy=str(raw.get("proxy", "free")),
             delay_between_members=float(raw.get("delay_between_members", 5)),
+            delay_between_pubs=float(raw.get("delay_between_pubs", 3)),
             filename_style=str(raw.get("filename_style", "lastname_firstname")),
         )
 

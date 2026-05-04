@@ -19,6 +19,7 @@ import click
 
 from .bibtex import render_all
 from .config import MemberList, Settings
+from .export import export_all
 from .scholar import fetch_all
 
 # Defaults point at the YAML files that ship next to the source tree (two
@@ -66,6 +67,29 @@ def fetch(ctx: click.Context, name: str | None, force: bool, no_bibtex: bool) ->
         # Distinct exit so `--member typo` doesn't silently no-op.
         raise click.ClickException(f"No members matched {name!r}.")
     fetch_all(settings, members, force=force, with_bibtex=not no_bibtex)
+
+
+@main.command()
+@click.option("--member", "name", default=None, help="Only this member (substring match).")
+@click.option("--headless", is_flag=True, help="Run Chromium headless (no window). Default is headed so you can solve any CAPTCHA.")
+@click.option("--no-pause-on-captcha", is_flag=True, help="Fail instead of waiting for human CAPTCHA solving.")
+@click.pass_context
+def export(ctx: click.Context, name: str | None, headless: bool, no_pause_on_captcha: bool) -> None:
+    """Bulk-download per-member BibTeX from Scholar via Playwright.
+
+    More reliable than `fetch` for getting BibTeX: one request per member
+    via the profile's "Export → BibTeX" button, mimicking a human. Cache
+    schema is the same, so `publs render` works against the result.
+    """
+    settings: Settings = ctx.obj["settings"]
+    members = ctx.obj["members"].select(name)
+    if not members:
+        raise click.ClickException(f"No members matched {name!r}.")
+    export_all(
+        settings, members,
+        headed=not headless,
+        pause_on_captcha=not no_pause_on_captcha,
+    )
 
 
 @main.command()

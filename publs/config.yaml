@@ -24,5 +24,10 @@ proxy: none
 # Polite delay between members (seconds). Cuts down on burst patterns.
 delay_between_members: 5
 
+# Polite delay between per-pub BibTeX fetches (seconds). Each pub costs two
+# Scholar requests (search + cite popup), so this is the dominant cost on
+# big author profiles. Increase if you start seeing rate-limit errors.
+delay_between_pubs: 3
+
 # Slugify rule for output filenames. Defaults to lastname-firstname lowercase.
 filename_style: lastname_firstname
