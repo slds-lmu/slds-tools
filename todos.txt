@@ -1,0 +1,5 @@
+
+
+we need to look at how we start containers, but also resume them, especially if something 
+in between was installed, e.g. a missing R package
+--> we also need to doc this

@@ -69,26 +69,81 @@ That pin will resolve to *exactly* the same bytes today, in three years, on any 
 
 Bump the pin deliberately when you need newer packages; don't track `:latest` silently. Breaking changes to this image will be announced via a `:vN` tag bump (`:v1` → `:v2`).
 
-## How to use
-
-Build locally:
-
-```sh
-docker build -t slds-default docker/default
-```
-
-Run interactively:
-
-```sh
-docker run --rm -it slds-default
-```
-
-Pull the published image:
+## Pull and run
 
 ```sh
 docker pull ghcr.io/slds-lmu/default:latest
+docker run --rm -it ghcr.io/slds-lmu/default:latest
 ```
+
+## Build locally
+
+From the repo root:
+
+```sh
+docker build -t slds-default docker/default
+docker run --rm -it slds-default
+```
+
+First build takes ~30–60 min (texlive-full and the R packages dominate); subsequent builds reuse the layer cache and are much faster. Resulting image is ~8 GB.
+
+## Building a project-specific image on top of `default`
+
+When you start a new project (paper, experiment, course material) and `default` is *almost* what you need, derive your project's image from it instead of rebuilding everything from scratch.
+
+### Skeleton `Dockerfile` for your project repo
+
+```Dockerfile
+# Pin to a digest for reproducibility (see "Finding the digest" above).
+# A floating tag like :latest works for throwaway / interactive use, but
+# breaks reproducibility — the upstream image silently changes under you.
+FROM ghcr.io/slds-lmu/default@sha256:9f3c1a4b8e2d6f7a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a
+
+# --- Project-specific extras --------------------------------------------------
+# Only install what `default` doesn't already have (check the Contents section).
+
+# Extra R packages from CRAN / Posit Public Package Manager.
+RUN R -e "install.packages(c('brms', 'rstan'), \
+          repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')"
+
+# Extra Python packages into the venv that's already on PATH at /opt/venv.
+RUN pip install --no-cache-dir lifelines tslearn
+
+# Extra apt packages (rare — `default` already covers the common cases).
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         libsomething-dev \
+#     && rm -rf /var/lib/apt/lists/*
+
+# --- Project code -------------------------------------------------------------
+WORKDIR /paper
+COPY . .
+
+# What `docker run` does by default.
+CMD ["Rscript", "run_experiments.R"]
+```
+
+### Build and run
+
+```sh
+docker build -t my-paper .
+
+# One-off run — re-runs CMD on the baked-in copy of your code.
+docker run --rm my-paper
+
+# Interactive shell with your live code mounted (skips COPY's snapshot).
+docker run --rm -it -v "$PWD":/paper my-paper /bin/zsh
+```
+
+### Rules of thumb
+
+- **Pin the `FROM` line to an `@sha256:<digest>`, not `:latest`.** Otherwise your project's reproducibility silently drifts whenever this upstream image rebuilds.
+- **Don't reinstall things `default` already has.** If you find yourself running `install.packages('tidyverse')` in your project Dockerfile, stop — check the Contents section first.
+- **Group extras into as few `RUN` blocks as you can.** Each `RUN` is a layer; many small ones make pulls slow and hurt cache reuse.
+- **If three projects in a row need the same extra, propose adding it to `default`** — that's exactly what this image exists for.
+- **Optional: publish your project image too.** If you want CI to build and push `ghcr.io/<your-org>/<paper-name>` on every commit, the workflow at [`.github/workflows/docker.yml`](../../.github/workflows/docker.yml) in this repo is a working template you can copy and adapt.
 
 ## Files
 
 - [`Dockerfile`](./Dockerfile) — image definition.
+
+
