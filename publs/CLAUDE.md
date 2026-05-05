@@ -19,3 +19,8 @@ by surfacing candidates from external sources for human accept/reject.
 - (2) for functions, doc purpose, inputs, outputs, side-effects;
 - (3) in config files, doc the purpose of each option.
 
+## Don't spread the same explanation across files
+- Pick the single best home for a piece of doc
+- Elsewhere, either be brief or use a one-line pointer 
+- Redundant prose drifts out of sync and bloats
+

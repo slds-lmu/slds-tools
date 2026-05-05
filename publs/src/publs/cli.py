@@ -112,7 +112,7 @@ def members_cmd(ctx: click.Context) -> None:
         orc = "OR" if m.orcid       else "--"
         gs = "GS" if m.scholar_id  else "--"
         skip = " [skipped]" if not m.include else ""
-        click.echo(f"  [{oa} {orc} {gs}]  {m.name}{skip}  ({m.role or '?'})")
+        click.echo(f"  [{oa} {orc} {gs}]  {m.name}{skip}")
     _warn_id_gaps(ctx.obj["members"].members)
 
 

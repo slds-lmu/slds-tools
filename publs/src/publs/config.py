@@ -25,20 +25,17 @@ class Settings:
     """
 
     ssot_path: Path
-    min_year: int | None
+    min_year: int | None      # see config.yaml
     mailto: str
-    enabled_sources: tuple[str, ...]
 
     @classmethod
     def load(cls, path: Path) -> "Settings":
         raw = yaml.safe_load(path.read_text())
         base = path.parent
-        sources = tuple(raw.get("enabled_sources") or ["openalex"])
         return cls(
             ssot_path=(base / raw["ssot_path"]).resolve(),
             min_year=raw.get("min_year"),
             mailto=str(raw.get("mailto", "")),
-            enabled_sources=sources,
         )
 
 
@@ -54,7 +51,6 @@ class Member:
     """
 
     name: str
-    role: str | None = None
     openalex_id: str | None = None    # https://openalex.org/A...
     orcid: str | None = None          # used by Crossref + ORCID itself
     scholar_id: str | None = None     # https://scholar.google.com/?user=...
@@ -81,7 +77,6 @@ class MemberList:
         members = [
             Member(
                 name=m["name"],
-                role=m.get("role"),
                 openalex_id=m.get("openalex_id"),
                 orcid=m.get("orcid"),
                 scholar_id=m.get("scholar_id"),

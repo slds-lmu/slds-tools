@@ -13,148 +13,120 @@
 # missing ID so coverage gaps stay visible.
 #
 # include: false  -> skip this member entirely (alumni, admins)
-# role: free text -> bookkeeping; not used by code
 
 members:
   # --- Leadership ---
   - name: Bernd Bischl
-    role: Chair
     openalex_id: A5069072700
     orcid: null
     scholar_id: s34UckkAAAAJ
   - name: Fabian Fumagalli
-    role: Thomas Bayes Fellow / MCML
     openalex_id: A5072839657
     orcid: null
     scholar_id: anUMB08AAAAJ
 
   # --- PostDocs ---
   - name: Matthias Aßenmacher
-    role: PostDoc / BERD
     openalex_id: A5069469652
     orcid: null
     scholar_id: qmQ-l84AAAAJ
   - name: Andreas Bender
-    role: Senior Lecturer / MCML
     openalex_id: A5052684092
     orcid: null
     scholar_id: pYXcdVQAAAAJ
   - name: Ludwig Bothmann
-    role: PostDoc / Lecturer
     openalex_id: A5020570041
     orcid: null
     scholar_id: TYrvJm0AAAAJ
   - name: Giuseppe Casalicchio
-    role: PostDoc / MCML
     openalex_id: A5060625180
     orcid: null
     scholar_id: MHcaZMQAAAAJ
   - name: Juliane Lauks
-    role: PostDoc / Scientific Manager
     openalex_id: A5070646590
     orcid: null
     scholar_id: null
   - name: Mina Rezaei
-    role: PostDoc / MCML
     openalex_id: A5076635383
     orcid: null
     scholar_id: gwQH-xUAAAAJ
 
   # --- Research Staff ---
   - name: Marc Becker
-    role: Research Software Engineer
     openalex_id: A5101505586
     orcid: null
     scholar_id: null
 
   # --- PhD Students ---
   - name: Helen Alber
-    role: PhD
     openalex_id: A5115041363
     orcid: null
     scholar_id: d_z5QBwAAAAJ
   - name: Salem Ayadi
-    role: PhD
     openalex_id: null
     orcid: null
     scholar_id: null
   - name: Martin Binder
-    role: PhD
     openalex_id: A5101680868
     orcid: null
     scholar_id: null
   - name: Coco Bögel
-    role: PhD
     openalex_id: null
     orcid: null
     scholar_id: null
   - name: Philip Boustani
-    role: PhD
     openalex_id: A5116145249
     orcid: null
     scholar_id: CSQxANkAAAAJ
   - name: Stefan Coors
-    role: PhD
     openalex_id: A5037009550
     orcid: null
     scholar_id: bOLYKOgAAAAJ
   - name: Fiona Katharina Ewald
-    role: PhD
     openalex_id: A5093022032
     orcid: null
     scholar_id: lvEHATwAAAAJ
   - name: Sebastian Fischer
-    role: PhD
     openalex_id: A5033789712
     orcid: null
     scholar_id: null
   - name: Esteban Garces Arias
-    role: PhD (external collaborator)
     openalex_id: A5114076222
     orcid: null
     scholar_id: null
   - name: Timo Heiß
-    role: PhD
     openalex_id: null
     orcid: null
     scholar_id: JY0MV5wAAAAJ
   - name: Yawei Li
-    role: PhD
     openalex_id: A5125249379
     orcid: null
     scholar_id: q8A2tT8AAAAJ
   - name: Florian Karl
-    role: PhD
     openalex_id: A5102770343
     orcid: null
     scholar_id: k-ZyY8EAAAAJ
   - name: Chris Kolb
-    role: PhD
     openalex_id: A5075066925
     orcid: null
     scholar_id: "-TLXpk0AAAAJ"
   - name: Philipp Kopper
-    role: PhD
     openalex_id: A5060691634
     orcid: null
     scholar_id: null
   - name: David Rundel
-    role: PhD
     openalex_id: A5094207457
     orcid: null
     scholar_id: null
   - name: Theresa Stüber
-    role: PhD
     openalex_id: A5020676803
     orcid: null
     scholar_id: KSptwhEAAAAJ
   - name: Xiao-Yin To
-    role: PhD
     openalex_id: A5055302612
     orcid: null
     scholar_id: WYhNvMQAAAAJ
   - name: Zizheng Zhang
-    role: PhD
     openalex_id: null
     orcid: null
     scholar_id: LrC-zwUAAAAJ

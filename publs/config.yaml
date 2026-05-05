@@ -1,24 +1,14 @@
 # Global configuration for publs.
-# Paths are resolved relative to this file.
 
-# The single SSOT BibTeX file. All commands read from and append to it.
-# Hand-edit it freely; publs only ever appends new entries you accept
-# interactively.
+# The single SSOT BibTeX file. 
 ssot_path: slds.bib
 
-# Drop candidate entries older than this year. null = keep everything.
+# Year cutoff applied at FETCH time, before matching. Any candidate whose
+# `publication_year < min_year` (or whose year is missing entirely) is
+# discarded before it can be surfaced as "missing" or "outdated".
 min_year: 2015
 
 # Contact email for the OpenAlex "polite pool" (passed as ?mailto= and in the
 # User-Agent). OpenAlex uses this to contact you if your scripts misbehave;
 # the polite pool also gets faster, more stable rate limits.
 mailto: bernd_bischl@gmx.net
-
-# Sources publs may query. Order is the priority order in which a candidate
-# is fetched; OpenAlex first because it's the most generous and reliable,
-# Crossref second for DOI enrichment, Google Scholar last because it blocks
-# easily. crossref/scholar are not implemented yet.
-enabled_sources:
-  - openalex
-  # - crossref
-  # - scholar

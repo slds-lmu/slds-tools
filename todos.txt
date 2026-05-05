@@ -14,7 +14,6 @@ publs:
   we should inititally check all other files, and only add in bibs which make sense
 - README needs to be completely rehauled to become user docs
 - check if we really need config.yaml and all its entries
-- remove "role" from members
 
 sandbox:
 

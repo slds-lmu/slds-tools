@@ -82,8 +82,8 @@ def fetch(member: Member, settings: Settings) -> list[Candidate]:
     """Return all OpenAlex works for `member` as Candidate records.
 
     Returns an empty list if the member has no `openalex_id` — there is
-    no name-search fallback by design. Applies `settings.min_year` here
-    so downstream code never sees old works.
+    no name-search fallback by design. `settings.min_year` is applied
+    here (see config.yaml).
     """
     author_id = author_url(member)
     if not author_id:
