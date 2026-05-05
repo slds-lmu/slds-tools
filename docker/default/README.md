@@ -1,6 +1,8 @@
 # `default` image
 
 The group's everyday CPU image — Ubuntu 24.04 with R, Python, Latex and common tools.
+It is multi-arch (`linux/amd64` + `linux/arm64`), so it also runs natively on Apple Silicon.
+
 
 ## Contents
 
@@ -36,10 +38,17 @@ Bump the pin deliberately when you need newer packages; don't track `:latest` si
 
 ## Pull and run
 
+The image is public — no `docker login` needed.
+
 ```sh
 docker pull ghcr.io/slds-lmu/default:latest
 docker run --rm -it ghcr.io/slds-lmu/default:latest
 ```
+
+Pulled images live under `/var/lib/docker/` on Linux (inside the Docker Desktop VM on macOS/Windows). 
+Images are quite large — check usage with `docker system df`, 
+remove unused images with `docker image prune`, 
+or clear everything not currently in use with `docker system prune -a`.
 
 ## Build locally
 
@@ -50,7 +59,7 @@ docker build -t slds-default docker/default
 docker run --rm -it slds-default
 ```
 
-First build takes ~30–60 min (texlive-full and the R packages dominate); subsequent builds reuse the layer cache and are much faster. Resulting image is ~8 GB.
+First build can take ~30–60 min; subsequent builds reuse the layer cache and are much faster.
 
 ## Building a project-specific image on top of `default`
 

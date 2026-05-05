@@ -1,15 +1,22 @@
 
 
-we need to look at how we start containers, but also resume them, especially if something 
-in between was installed, e.g. a missing R package
---> we also need to doc this
 
 
-how long does to take to create a downstream image? really doc that for users
+
+sandbox:
+
+use the posit public PM and ensure binaries are used
+when something fails, stop the build? why would we go on?
+
+
+do security hardening with claude on the docker container. we dont want claude to access
+ANY secrets on the normal machine, in home, or in the keyring. all access should be ACTIVELY managed
+ask claude how to do this best
 
 finish and check docker-README
 
-use the posit public PM and ensure binaries are used
+how long does to take to create a downstream image? really doc that for users
 
-when something fails, stop the build? why would we go on?
-
+we need to look at how we start containers, but also resume them, especially if something 
+in between was installed, e.g. a missing R package
+--> we also need to doc this
