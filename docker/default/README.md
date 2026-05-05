@@ -45,6 +45,8 @@ docker pull ghcr.io/slds-lmu/default:latest
 docker run --rm -it ghcr.io/slds-lmu/default:latest
 ```
 
+`--rm` removes the container on exit so stopped containers don't pile up; `-i` keeps STDIN open and `-t` allocates a pseudo-TTY, so together `-it` gives you an interactive shell. With no command appended, the container starts the image's default shell (`zsh`).
+
 Pulled images live under `/var/lib/docker/` on Linux (inside the Docker Desktop VM on macOS/Windows). 
 Images are quite large — check usage with `docker system df`, 
 remove unused images with `docker image prune`, 
