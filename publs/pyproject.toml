@@ -1,14 +1,13 @@
 [project]
 name = "publs"
-version = "0.1.0"
-description = "Scrape SLDS member publications from Google Scholar into per-member BibTeX files."
+version = "0.2.0"
+description = "Maintain a single SSOT BibTeX file for SLDS publications, with interactive suggestions from OpenAlex / Crossref / Google Scholar."
 requires-python = ">=3.11"
 dependencies = [
-    "scholarly>=1.7.11",
     "pyyaml>=6.0",
     "click>=8.1",
-    "playwright>=1.49",
     "bibtexparser>=1.4",
+    "httpx>=0.27",
 ]
 
 [project.scripts]

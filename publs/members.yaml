@@ -1,104 +1,162 @@
-# SLDS members and their Google Scholar IDs.
+# SLDS members and the IDs we use to find them on external publication sources.
 #
 # Seeded from https://www.slds.stat.uni-muenchen.de/people/ on 2026-05-04.
-# You MUST fill in `scholar_id` for each member you want included. Members with
-# `scholar_id: null` are skipped (with a warning) by `publs fetch`.
 #
-# How to find a Scholar ID:
-#   1. Open the person's Google Scholar profile.
-#   2. The URL looks like https://scholar.google.com/citations?user=ABCDEF1234&hl=en
-#   3. The value of `user=` is the scholar_id.
+# Resolution order (most reliable first):
+#   1. openalex_id  -> e.g. "A5012345678" (the trailing token of the OpenAlex
+#                      author URL https://openalex.org/A5012345678).
+#   2. orcid        -> "0000-0000-0000-0000". OpenAlex maps ORCIDs to author
+#                      IDs internally; if you know the ORCID, that's enough.
+#   3. name search  -> last resort. The tool will warn and let you confirm.
+#
+# scholar_id is kept for the future Google Scholar integration (added last
+# because Scholar blocks easily). Members with no IDs at all fall back to
+# name search.
 #
 # Optional fields:
-#   include: false   -> skip this member entirely (e.g., admins, alumni)
-#   role: free text  -> just for your bookkeeping; not used by the scraper
+#   include: false   -> skip this member entirely (alumni, admins)
+#   role: free text  -> bookkeeping; not used by code
 
 members:
   # --- Leadership ---
   - name: Bernd Bischl
     role: Chair
+    openalex_id: null
+    orcid: null
     scholar_id: s34UckkAAAAJ
   - name: Fabian Fumagalli
     role: Thomas Bayes Fellow / MCML
+    openalex_id: null
+    orcid: null
     scholar_id: anUMB08AAAAJ
 
   # --- PostDocs ---
   - name: Matthias Aßenmacher
     role: PostDoc / BERD
+    openalex_id: null
+    orcid: null
     scholar_id: qmQ-l84AAAAJ
   - name: Andreas Bender
     role: Senior Lecturer / MCML
+    openalex_id: null
+    orcid: null
     scholar_id: pYXcdVQAAAAJ
   - name: Ludwig Bothmann
     role: PostDoc / Lecturer
+    openalex_id: null
+    orcid: null
     scholar_id: TYrvJm0AAAAJ
   - name: Giuseppe Casalicchio
     role: PostDoc / MCML
+    openalex_id: null
+    orcid: null
     scholar_id: MHcaZMQAAAAJ
   - name: Juliane Lauks
     role: PostDoc / Scientific Manager
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Mina Rezaei
     role: PostDoc / MCML
+    openalex_id: null
+    orcid: null
     scholar_id: gwQH-xUAAAAJ
 
   # --- Research Staff ---
   - name: Marc Becker
     role: Research Software Engineer
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
 
   # --- PhD Students ---
   - name: Helen Alber
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: d_z5QBwAAAAJ
   - name: Salem Ayadi
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Martin Binder
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Coco Bögel
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Philip Boustani
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: CSQxANkAAAAJ
   - name: Stefan Coors
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: bOLYKOgAAAAJ
   - name: Fiona Katharina Ewald
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: lvEHATwAAAAJ
   - name: Sebastian Fischer
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Esteban Garces Arias
     role: PhD (external collaborator)
-    scholar_id: null   # no SLDS profile page
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Timo Heiß
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: JY0MV5wAAAAJ
   - name: Yawei Li
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: q8A2tT8AAAAJ
   - name: Florian Karl
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: k-ZyY8EAAAAJ
   - name: Chris Kolb
     role: PhD
-    scholar_id: "-TLXpk0AAAAJ"   # quoted: starts with hyphen
+    openalex_id: null
+    orcid: null
+    scholar_id: "-TLXpk0AAAAJ"
   - name: Philipp Kopper
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: David Rundel
     role: PhD
-    scholar_id: null   # no Scholar link on SLDS profile
+    openalex_id: null
+    orcid: null
+    scholar_id: null
   - name: Theresa Stüber
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: KSptwhEAAAAJ
   - name: Xiao-Yin To
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: WYhNvMQAAAAJ
   - name: Zizheng Zhang
     role: PhD
+    openalex_id: null
+    orcid: null
     scholar_id: LrC-zwUAAAAJ

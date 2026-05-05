@@ -1,33 +1,24 @@
-# Global configuration for the publs scraper.
-# Paths are relative to this file.
+# Global configuration for publs.
+# Paths are resolved relative to this file.
 
-# Where the JSON cache (one file per member) lives.
-cache_dir: cache
+# The single SSOT BibTeX file. All commands read from and append to it.
+# Hand-edit it freely; publs only ever appends new entries you accept
+# interactively.
+ssot_path: slds.bib
 
-# Where the rendered .bib files are written (one per member).
-output_dir: out
-
-# Drop publications older than this year. Set to null to keep everything.
+# Drop candidate entries older than this year. null = keep everything.
 min_year: 2015
 
-# Cache freshness in days. `publs fetch` skips members whose cache is younger
-# than this unless --force is passed. Set to 0 to always refetch.
-cache_ttl_days: 7
+# Contact email for the OpenAlex "polite pool" (passed as ?mailto= and in the
+# User-Agent). OpenAlex uses this to contact you if your scripts misbehave;
+# the polite pool also gets faster, more stable rate limits.
+mailto: bernd_bischl@gmx.net
 
-# Anti-blocking strategy for Google Scholar.
-#   none -> direct requests (will get rate-limited on bigger groups)
-#   free -> scholarly's FreeProxies (free pool; flaky and currently broken
-#           against modern httpx — falls back to `none` with a warning if it
-#           can't initialize)
-proxy: none
-
-# Polite delay between members (seconds). Cuts down on burst patterns.
-delay_between_members: 5
-
-# Polite delay between per-pub BibTeX fetches (seconds). Each pub costs two
-# Scholar requests (search + cite popup), so this is the dominant cost on
-# big author profiles. Increase if you start seeing rate-limit errors.
-delay_between_pubs: 3
-
-# Slugify rule for output filenames. Defaults to lastname-firstname lowercase.
-filename_style: lastname_firstname
+# Sources publs may query. Order is the priority order in which a candidate
+# is fetched; OpenAlex first because it's the most generous and reliable,
+# Crossref second for DOI enrichment, Google Scholar last because it blocks
+# easily. crossref/scholar are not implemented yet.
+enabled_sources:
+  - openalex
+  # - crossref
+  # - scholar

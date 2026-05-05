@@ -1,13 +1,12 @@
-"""publs — scrape SLDS member publications from Google Scholar into BibTeX.
+"""publs — maintain a single SSOT BibTeX file for SLDS publications.
 
-Three layers, all driven by two YAML files (config.yaml + members.yaml):
-
-    config   ->  parses YAML into Settings + Member dataclasses
-    scholar  ->  hits Google Scholar via `scholarly`, writes a JSON cache
-    bibtex   ->  reads the JSON cache, applies filters, writes one .bib per
-                 member
-
-The `cli` module wires these together as a `click` app exposed as `publs`.
+Layers:
+    config   -> Settings + MemberList from YAML
+    bibdb    -> load / index / append the SSOT slds.bib
+    sources/ -> external publication sources (openalex; crossref/scholar TBD)
+    match    -> "is this candidate already in the SSOT?"
+    review   -> interactive accept/reject loop
+    cli      -> click app exposed as `publs`
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
