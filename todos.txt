@@ -1,39 +1,38 @@
 
 general:
-  clean up the slds-website repo. it has issues and PRs
-  check shell-zsh better. also use it for my own laptop.
-    maybe oh-my-zsh?
-  in wintermute doc how claude actually works. memomry. projects.
+- clean up the slds-website repo. it has issues and PRs
+- check shell-zsh better. also use it for my own laptop.
+  maybe oh-my-zsh?
+- in wintermute doc how claude actually works. memomry. projects.
   rules and agents files. hotkeys. how to setup claude with user prefs that i like.
-  configure claude globally how i like it --> dotfiles
-check all claude files in all subdirs
+- configure claude globally how i like it --> dotfiles
 
 
 publs:
-we have no SSOT for publs. we have multiple bib files. we should only have 
-one file, and only maintain publs of ppl in the group.
-we should inititally check all other files, and only add in bibs which make sense
-README needs to be completely rehauled to become user docs
-
+- we have no SSOT for publs. we have multiple bib files. we should only have 
+  one file, and only maintain publs of ppl in the group.
+  we should inititally check all other files, and only add in bibs which make sense
+- README needs to be completely rehauled to become user docs
+- check if we really need config.yaml and all its entries
+- remove "role" from members
 
 sandbox:
 
-we need to check / config how mem works when we are in the sandbox.
+- we need to check / config how mem works when we are in the sandbox.
+- in README doc the zsh shell BRIEFLY, usage
+- use the posit public PM and ensure binaries are used
+- when something fails, stop the build? why would we go on?
+- the docker image will be used by many ppl. we should really ensure by testing in the 
+  CI that nothing is broken and claude shold check that too
 
-in README doc the zsh shell BRIEFLY, usage
+- do security hardening with claude on the docker container. we dont want claude to access
+  ANY secrets on the normal machine, in home, or in the keyring. all access should be ACTIVELY managed
+  ask claude how to do this best
 
-use the posit public PM and ensure binaries are used
-when something fails, stop the build? why would we go on?
+- finish and check docker-README
 
+- how long does to take to create a downstream image? really doc that for users
 
-do security hardening with claude on the docker container. we dont want claude to access
-ANY secrets on the normal machine, in home, or in the keyring. all access should be ACTIVELY managed
-ask claude how to do this best
-
-finish and check docker-README
-
-how long does to take to create a downstream image? really doc that for users
-
-we need to look at how we start containers, but also resume them, especially if something 
-in between was installed, e.g. a missing R package
+- we need to look at how we start containers, but also resume them, especially if something 
+  in between was installed, e.g. a missing R package
 --> we also need to doc this

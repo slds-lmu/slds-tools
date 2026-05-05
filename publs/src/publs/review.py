@@ -1,18 +1,25 @@
-"""Interactive accept/reject loop for missing candidates.
+"""Interactive accept/reject loops for missing and outdated candidates.
 
-For each candidate not yet in the SSOT, we render a one-screen summary
-and prompt the user. Accepted entries are appended immediately, so a
-Ctrl-C never loses the work already done. Rejections are silent — they
-will resurface on the next `publs review` run, which is fine because
-the SSOT is under version control and the user can grep for previously
-considered DOIs.
+Two flows, both driven by `review_all`:
 
-Future: persistent rejection list keyed by DOI / normalized title, so
-reruns don't re-prompt for things you've already turned down. Out of
-scope for the first cut.
+  - Append flow ("missing"):  for each candidate not yet in the SSOT,
+    render a one-screen summary and prompt a/r/s/q. Accepts append
+    immediately so a Ctrl-C never loses already-confirmed work.
+
+  - Replace flow ("outdated"): for each candidate that matches an
+    existing SSOT entry but adds metadata fields it lacks (e.g. a DOI
+    that wasn't there before), render a unified diff of old-vs-proposed
+    and prompt a/r/s/q. Accepts replace atomically (tmpfile + os.replace
+    in BibDB), preserving the existing citation key so external
+    references don't break.
+
+Rejections are silent — they will resurface on the next run. The SSOT
+is under version control, so a stray accept can always be reverted by
+hand.
 """
 from __future__ import annotations
 
+import difflib
 import logging
 import sys
 
@@ -27,6 +34,7 @@ log = logging.getLogger(__name__)
 
 
 def _render(cand: Candidate, member: Member) -> str:
+    """One-screen text summary of a candidate for the append prompt."""
     authors = ", ".join(cand.authors[:6]) + (
         f", ... (+{len(cand.authors) - 6})" if len(cand.authors) > 6 else ""
     )
@@ -65,9 +73,39 @@ def _extract_key(bibtex_entry: str) -> str:
     return key.strip()
 
 
+def _render_diff(old_text: str, new_text: str, key: str,
+                 fixes: tuple[str, ...]) -> str:
+    """Color-render a unified diff of old vs proposed entry text.
+
+    Inputs are stripped of leading/trailing whitespace by the caller so
+    the diff focuses on the entry block itself, not the surrounding
+    blank lines that exist only in the on-disk file.
+    """
+    diff = difflib.unified_diff(
+        old_text.splitlines(),
+        new_text.splitlines(),
+        fromfile=f"slds.bib (current @{key})",
+        tofile=f"proposed (adds: {', '.join(fixes) or '?'})",
+        lineterm="",
+    )
+    out: list[str] = []
+    for line in diff:
+        if line.startswith("+++") or line.startswith("---"):
+            out.append(click.style(line, fg="white", bold=True))
+        elif line.startswith("+"):
+            out.append(click.style(line, fg="green"))
+        elif line.startswith("-"):
+            out.append(click.style(line, fg="red"))
+        elif line.startswith("@@"):
+            out.append(click.style(line, fg="cyan"))
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def review_member(member: Member, candidates: list[Candidate],
                   db: BibDB, settings: Settings) -> tuple[int, int, bool]:
-    """Walk through `candidates` interactively.
+    """Walk through `candidates` (append flow) interactively.
 
     Returns (accepted, rejected, quit). On quit, the caller stops
     iterating to other members.
@@ -104,12 +142,11 @@ def review_member(member: Member, candidates: list[Candidate],
                     while db.has_key(f"{base}-{n}"):
                         n += 1
                     new_key = f"{base}-{n}"
-                    bib = bib.replace(f"{{{key},", f"{{{new_key},", 1)
+                    bib = BibDB._rekey(bib, new_key)
                     log.warning("Key %s already in SSOT; renamed to %s",
                                 key, new_key)
                     key = new_key
-                db.append(bib, doi=cand.doi or None,
-                          title=cand.title or None, key=key)
+                db.append(bib)
                 click.echo(click.style(
                     f"  + appended @{key}  ({label})", fg="green",
                 ))
@@ -127,17 +164,89 @@ def review_member(member: Member, candidates: list[Candidate],
     return accepted, rejected, False
 
 
+def review_outdated_member(
+    member: Member,
+    items: list[tuple[Candidate, str, tuple[str, ...]]],
+    db: BibDB, settings: Settings,
+) -> tuple[int, int, bool]:
+    """Walk through outdated entries (replace flow) interactively.
+
+    For each (Candidate, old_key, fixes) tuple, build a fresh BibTeX
+    block from the candidate, rewrite its citation key to `old_key` so
+    external references stay intact, render a unified diff of the
+    current SSOT block vs the proposal, and prompt a/r/s/q. Accept
+    triggers an atomic in-place replace.
+
+    Returns (accepted, rejected, quit) like review_member.
+    """
+    accepted = rejected = 0
+    if not items:
+        return 0, 0, False
+
+    click.echo()
+    click.echo(click.style(
+        f"=== {member.name}: {len(items)} outdated entr{'y' if len(items) == 1 else 'ies'} ===",
+        fg="magenta",
+    ))
+
+    for i, (cand, old_key, fixes) in enumerate(items, start=1):
+        new_bib, label = _build_entry(cand, settings)
+        new_block = BibDB._rekey(new_bib, old_key).strip()
+        try:
+            old_text = db.get_entry_text(old_key).rstrip()
+        except KeyError:
+            # The SSOT changed under us (concurrent edit, or an earlier
+            # replace in this same run touched it). Skip gracefully.
+            log.warning("entry @%s no longer in SSOT; skipping", old_key)
+            continue
+
+        click.echo()
+        click.echo(f"[{i}/{len(items)}] @{old_key}  (adds: {', '.join(fixes)})")
+        click.echo(f"  source: {label}")
+        click.echo(_render_diff(old_text, new_block, old_key, fixes))
+        while True:
+            choice = click.prompt(
+                "  [a]ccept replace / [r]eject / [s]kip / [q]uit",
+                default="s", show_default=False,
+            ).strip().lower()
+            if choice in ("a", "accept"):
+                db.replace(old_key, new_block)
+                click.echo(click.style(
+                    f"  ~ replaced @{old_key}  ({label})", fg="magenta",
+                ))
+                accepted += 1
+                break
+            if choice in ("r", "reject"):
+                rejected += 1
+                break
+            if choice in ("s", "skip", ""):
+                break
+            if choice in ("q", "quit"):
+                return accepted, rejected, True
+            click.echo("  please answer a / r / s / q")
+
+    return accepted, rejected, False
+
+
 def review_all(members: list[Member], db: BibDB, settings: Settings,
                source: str) -> None:
-    """Top-level driver: fetch from `source` per member, then review."""
+    """Top-level driver: fetch from `source` per member, then review.
+
+    Within each member, runs the append flow (missing candidates) first,
+    then the replace flow (outdated candidates). 'q' at any prompt
+    short-circuits the entire run.
+    """
     if source != "openalex":
-        # crossref / scholar are stubs for now. Keep the surface obvious so
-        # the CLI error is actionable instead of mysterious.
+        # crossref / scholar are stubs for now. Keep the surface obvious
+        # so the CLI error is actionable instead of mysterious.
         click.echo(f"source {source!r} is not implemented yet", err=True)
         sys.exit(2)
 
     id_field = ID_FIELD_BY_SOURCE[source]
     total_accepted = total_rejected = 0
+    total_replaced = total_replaced_rejected = 0
+    from .match import split_review_set
+
     for m in members:
         if not getattr(m, id_field):
             click.echo(f"\nskipping {m.name}: no {id_field}")
@@ -145,9 +254,9 @@ def review_all(members: list[Member], db: BibDB, settings: Settings,
         click.echo(f"\nfetching from {source}: {m.name}")
         cands = openalex.fetch(m, settings)
         click.echo(f"  {len(cands)} works after min_year filter")
-        from .match import split_missing
-        missing = split_missing(cands, db)
-        click.echo(f"  {len(missing)} missing from SSOT")
+        missing, outdated = split_review_set(cands, db)
+        click.echo(f"  {len(missing)} missing / {len(outdated)} outdated")
+
         a, r, q = review_member(m, missing, db, settings)
         total_accepted += a
         total_rejected += r
@@ -155,9 +264,17 @@ def review_all(members: list[Member], db: BibDB, settings: Settings,
             click.echo("\nquitting on user request.")
             break
 
+        a, r, q = review_outdated_member(m, outdated, db, settings)
+        total_replaced += a
+        total_replaced_rejected += r
+        if q:
+            click.echo("\nquitting on user request.")
+            break
+
     click.echo()
     click.echo(click.style(
-        f"summary: +{total_accepted} accepted / -{total_rejected} rejected",
+        f"summary: +{total_accepted} appended / -{total_rejected} rejected"
+        f"  |  ~{total_replaced} replaced / -{total_replaced_rejected} rejected",
         fg="cyan",
     ))
     click.echo(f"SSOT now has {len(db)} entries: {db.path}")

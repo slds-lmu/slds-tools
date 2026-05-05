@@ -21,7 +21,7 @@ import click
 
 from .bibdb import BibDB
 from .config import ID_FIELD_BY_SOURCE, Member, MemberList, Settings
-from .match import split_missing
+from .match import split_review_set
 from .review import review_all
 from .sources import openalex
 
@@ -137,21 +137,22 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
         raise click.ClickException(str(e)) from None
     click.echo(f"SSOT: {settings.ssot_path} ({len(db)} entries)")
     click.echo()
-    grand_total = grand_missing = 0
+    grand_total = grand_missing = grand_outdated = 0
     id_field = ID_FIELD_BY_SOURCE[source]
     for m in members:
         if not getattr(m, id_field):
             click.echo(f"  {m.name:<30}  -- skipped (no {id_field})")
             continue
         cands = openalex.fetch(m, settings)
-        missing = split_missing(cands, db)
+        missing, outdated = split_review_set(cands, db)
         grand_total += len(cands)
         grand_missing += len(missing)
+        grand_outdated += len(outdated)
         click.echo(f"  {m.name:<30}  {len(cands):>4} candidates  "
-                   f"{len(missing):>4} missing")
+                   f"{len(missing):>4} missing  {len(outdated):>4} outdated")
     click.echo()
     click.echo(f"  {'TOTAL':<30}  {grand_total:>4} candidates  "
-               f"{grand_missing:>4} missing")
+               f"{grand_missing:>4} missing  {grand_outdated:>4} outdated")
     _warn_id_gaps(all_members)
 
 
