@@ -5,14 +5,15 @@ general:
     maybe oh-my-zsh?
   in wintermute doc how claude actually works. memomry. projects.
   rules and agents files. hotkeys. how to setup claude with user prefs that i like.
-
+  configure claude globally how i like it --> dotfiles
+check all claude files in all subdirs
 
 
 publs:
 we have no SSOT for publs. we have multiple bib files. we should only have 
 one file, and only maintain publs of ppl in the group.
 we should inititally check all other files, and only add in bibs which make sense
-
+README needs to be completely rehauled to become user docs
 
 
 sandbox:
