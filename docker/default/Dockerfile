@@ -349,9 +349,22 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 # CARGO_DIST_FORCE_INSTALL_DIR but that name is liable to change between
 # cargo-dist releases; the post-install `mv` is robust against that and
 # leaves no behind-image cruft.
+#
+# Steps below, in order:
+#   1. Run the installer (drops `air` at /root/.local/bin/air, also writes
+#      `. "$HOME/.local/bin/env"` into .zshrc/.bashrc/.profile so that
+#      ~/.local/bin lands on PATH).
+#   2. Move the binary to /usr/local/bin so every user finds it on PATH.
+#   3. Delete /root/.local and /root/.config/air — the binary lives elsewhere
+#      now and nothing else in the image needs that tree.
+#   4. Strip cargo-dist's rc-file edits: with /root/.local gone, the source
+#      line points at a missing file and emits a "no such file" warning on
+#      every shell start. `|| true` keeps the RUN green even if a given rc
+#      file doesn't exist on this base image.
 RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-installer.sh | sh \
     && mv /root/.local/bin/air /usr/local/bin/air \
-    && rm -rf /root/.local /root/.config/air
+    && rm -rf /root/.local /root/.config/air \
+    && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
 
 # Default shell when running `docker run -it`.
 CMD ["/bin/zsh"]

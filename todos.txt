@@ -1,5 +1,12 @@
 
+general:
+  clean up the slds-website repo. it has issues and PRs
 
+
+publs:
+we have no SSOT for publs. we have multiple bib files. we should only have 
+one file, and only maintain publs of ppl in the group.
+we should inititally check all other files, and only add in bibs which make sense
 
 
 
