@@ -1,0 +1,40 @@
+# -----------------------------------------------------------------------------
+# Default zshrc shipped in the slds-tools docker/default image.
+# Minimal but useful: completions, history, fzf keybindings, two zsh plugins,
+# starship prompt. Customize by mounting your own dotfiles or layering a
+# project-specific Dockerfile on top of this image.
+# -----------------------------------------------------------------------------
+
+# Completions
+autoload -Uz compinit && compinit
+
+# History
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+
+# Emacs-style line editing (zsh's default; explicit for clarity)
+bindkey -e
+
+# fzf keybindings: Ctrl-R history, Ctrl-T file picker, Alt-C cd into subdir
+[ -f /usr/share/doc/fzf/examples/key-bindings.zsh ] && \
+  source /usr/share/doc/fzf/examples/key-bindings.zsh
+[ -f /usr/share/doc/fzf/examples/completion.zsh ] && \
+  source /usr/share/doc/fzf/examples/completion.zsh
+
+# zsh-autosuggestions: ghost-text completion of past commands as you type.
+# Press Right-arrow (or End) to accept; keep typing to ignore.
+[ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ] && \
+  source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+# zsh-syntax-highlighting: colorizes the command line as you type — green for
+# valid commands, red for invalid, file paths underlined when they exist.
+# Must be sourced LAST so it can wrap all defined ZLE widgets.
+[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ] && \
+  source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# starship prompt — auto-detects git status, language versions (R/Python/Node/
+# Rust/etc.), exit code, command duration. Config at /root/.config/starship.toml
+# uses the plain-text-symbols preset so no Nerd Font is required.
+eval "$(starship init zsh)"

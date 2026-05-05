@@ -322,6 +322,10 @@ RUN install -d -m 0755 /etc/apt/keyrings \
         vim \
         # zsh: alternative shell, used as the default CMD below
         zsh \
+        # zsh-autosuggestions: ghost-text completion of past commands as you type
+        zsh-autosuggestions \
+        # zsh-syntax-highlighting: colorizes commands on the command line
+        zsh-syntax-highlighting \
         # fzf: fuzzy finder, integrates with shells for fast file/history search
         fzf \
     && rm -rf /var/lib/apt/lists/*
@@ -365,6 +369,26 @@ RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-ins
     && mv /root/.local/bin/air /usr/local/bin/air \
     && rm -rf /root/.local /root/.config/air \
     && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
+
+# --- Shell setup -------------------------------------------------------------
+# Make root's login shell zsh (so /etc/passwd matches CMD), expose $SHELL so
+# subprocesses (tmux, git, sub-shells) know what they're inside, and install
+# starship as the prompt. The `plain-text-symbols` preset avoids requiring a
+# Nerd Font in the host terminal — works in plain xterm, Konsole, GNOME
+# Terminal, macOS Terminal, Windows Terminal, etc.
+RUN curl -fsSL https://starship.rs/install.sh \
+        | sh -s -- --yes --bin-dir /usr/local/bin \
+    && chsh -s /bin/zsh root \
+    && mkdir -p /root/.config \
+    && starship preset plain-text-symbols -o /root/.config/starship.toml
+
+# Ship a minimal zshrc that wires up completions, history, fzf keybindings,
+# the two zsh plugins installed above, and the starship prompt. See the file
+# itself for inline comments. Users override this by mounting their own
+# .zshrc or by layering a project Dockerfile.
+COPY zshrc /root/.zshrc
+
+ENV SHELL=/bin/zsh
 
 # Default shell when running `docker run -it`.
 CMD ["/bin/zsh"]

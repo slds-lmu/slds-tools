@@ -6,7 +6,8 @@ It is multi-arch (`linux/amd64` + `linux/arm64`), so it also runs natively on Ap
 
 ## Contents
 
-- **Base**: Ubuntu 24.04 LTS, locale `en_US.UTF-8`, zsh as default shell.
+- **Base**: Ubuntu 24.04 LTS, locale `en_US.UTF-8`. 
+Default shell is **zsh**.
 - **R** (latest stable from CRAN) with tidyverse, data.table, knitr, devtools, the mlr3 ecosystem (`mlr3verse`, `mlr3learners`, `bbotk`, `mlr3oml`), and the `air` formatter.
 - **Python 3.12** in a venv at `/opt/venv` (on `PATH`) with the standard scientific stack (numpy, pandas, scikit-learn, matplotlib, jupyter), `uv`, and Playwright + Chromium.
 - **LaTeX**: full `texlive-full` distribution plus pandoc, latexmk, biber, qpdf — any CTAN package should just work.
@@ -51,6 +52,12 @@ Pulled images live under `/var/lib/docker/` on Linux (inside the Docker Desktop 
 Images are quite large — check usage with `docker system df`, 
 remove unused images with `docker image prune`, 
 or clear everything not currently in use with `docker system prune -a`.
+
+### zsh usage
+
+- **Ctrl-R / Ctrl-T / Alt-C** — fzf history search / file picker / cd into subdir
+- **→** — accept the gray ghost-text suggestion from history
+- The starship prompt auto-shows git status, Python venv, and language versions
 
 ## Build locally
 
