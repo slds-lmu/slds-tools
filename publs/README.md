@@ -71,45 +71,39 @@ uv sync
 
 ### `members.yaml`
 
-One row per SLDS member. ID resolution order, most reliable first:
+One row per SLDS member, with one ID per external source:
 
-1. `openalex_id` — e.g. `A5093022032` (the trailing token of the OpenAlex
-   author URL `https://openalex.org/A5093022032`). No API call needed and
-   no chance of confusing two people with the same name.
-2. `orcid` — `0000-0000-0000-0000`. OpenAlex resolves this to an author ID
-   in one call.
-3. *name search* — last resort. The tool warns and logs the top 3 OpenAlex
-   hits.
+| field          | source        | example                  |
+|----------------|---------------|--------------------------|
+| `openalex_id`  | OpenAlex      | `A5012345678`            |
+| `orcid`        | Crossref      | `0000-0000-0000-0000`    |
+| `scholar_id`   | Google Scholar| `s34UckkAAAAJ` (the `user=` URL param) |
 
-`scholar_id` is preserved for the future Scholar integration. `include:
-false` skips a row without removing it (alumni, admins).
+**All three are optional and there is no fallback.** A null ID means
+that source is silently skipped *for that member* — the tool does not
+search by name. After every `check` / `review` run, publs prints a
+LOUD yellow end-of-run warning summarising every missing ID, so
+coverage gaps stay visible. To suppress an entry entirely (alumnus,
+admin), set `include: false`.
 
-#### Why filling in `openalex_id` matters (a lot)
+This is deliberate. Name search silently misfires on common names
+(returning 343 papers by *some other* Andreas Bender), and the cost
+of a misfire is a wrong-author entry leaking into the SSOT. We took
+the policy: never search by name, ever.
 
-Name search is fine for an unambiguous name (e.g. *Fiona Katharina Ewald*).
-It is **wrong** for common names. As a real example from this repo's first
-end-to-end check:
+Finding an ID:
+- **OpenAlex**: open the person's profile at <https://openalex.org>
+  (or follow a paper of theirs through search and click the author
+  name). URL is `https://openalex.org/A5012345678`; the `A...` part
+  is the ID.
+- **ORCID**: ask the member, or check their personal site / paper
+  PDFs.
+- **Google Scholar**: open their Scholar profile; the URL contains
+  `?user=...` — that's the ID.
 
-```
-  Andreas Bender              351 candidates   343 missing
-  Sebastian Fischer           248 candidates   248 missing
-  Yawei Li                    246 candidates   246 missing
-  Florian Karl                141 candidates   141 missing
-  Chris Kolb                   45 candidates    45 missing
-  ...
-```
-
-Those numbers make no sense for SLDS members. They show a different
-person — usually the most-cited researcher with that exact name — being
-returned by OpenAlex's name search. The tool can't tell the difference
-without an explicit ID, so it dutifully reports "343 papers you don't
-have" and the noise drowns out everything else.
-
-A 100% missing rate combined with a high candidate count is the
-fingerprint. When you see it: open the SLDS member's actual OpenAlex
-profile (or follow a paper of theirs through OpenAlex's search), copy the
-`A...` author ID into `members.yaml`, and re-run `publs check`. The number
-should drop into single or low-double digits.
+We will not auto-resolve any of these. Past tooling did, and it
+silently put the wrong person into the SSOT enough times that the
+trust model is now "the ID in members.yaml is the author, period".
 
 ## The update workflow
 

@@ -1,14 +1,13 @@
 """OpenAlex source: fetch a member's works as Candidate records.
 
-Resolution order for the OpenAlex author ID:
-    1. members.yaml `openalex_id`        (most reliable; no API hit needed)
-    2. members.yaml `orcid`              (one /authors/orcid:... call)
-    3. name search                       (fragile; logs the top 3 hits)
+The OpenAlex author ID comes from `members.yaml` only — no orcid lookup,
+no name search. A member with `openalex_id: null` is rejected at
+startup by the CLI, so by the time fetch() runs, we always have an ID.
 
 Once the author ID is known, paging through /works with
 `filter=author.id:<id>` gives us every work OpenAlex has linked to them.
-We don't fetch publisher BibTeX here — that happens in review.py only for
-candidates the user wants to accept, so `publs check` can do a fast
+We don't fetch publisher BibTeX here — that happens in review.py only
+for candidates the user wants to accept, so `publs check` can do a fast
 read-only scan of all members without hammering doi.org.
 """
 from __future__ import annotations
@@ -39,50 +38,19 @@ def _params(settings: Settings, **extra) -> dict:
     return p
 
 
-def resolve_author_id(client: httpx.Client, member: Member,
-                      settings: Settings) -> str | None:
-    """Return an OpenAlex author URL ('https://openalex.org/A...'), or None.
+def author_url(member: Member) -> str | None:
+    """Return the canonical OpenAlex author URL for a member, or None if
+    the member has no `openalex_id`.
 
-    Tries openalex_id, orcid, name search in that order.
+    Accepts both the bare ID form ('A5012345678') and the full URL form
+    in members.yaml; emits the URL form because that's what the /works
+    filter expects.
     """
-    if member.openalex_id:
-        # OpenAlex stores IDs as URLs; the API also accepts the bare suffix.
-        if member.openalex_id.startswith("http"):
-            return member.openalex_id
-        return f"https://openalex.org/{member.openalex_id}"
-
-    if member.orcid:
-        try:
-            r = client.get(
-                f"{OPENALEX}/authors/orcid:{member.orcid}",
-                params=_params(settings),
-            )
-            if r.status_code == 200:
-                return r.json().get("id")
-            log.warning("ORCID lookup failed for %s (%s): %d",
-                        member.name, member.orcid, r.status_code)
-        except httpx.HTTPError as e:
-            log.warning("ORCID lookup error for %s: %s", member.name, e)
-
-    # Name search fallback. Surface the top 3 so a misranked match is
-    # visible in the logs.
-    log.warning("Falling back to name search for %s — verify the result.",
-                member.name)
-    r = client.get(
-        f"{OPENALEX}/authors",
-        params=_params(settings, search=member.name, **{"per-page": 5}),
-    )
-    r.raise_for_status()
-    hits = r.json().get("results", [])
-    if not hits:
-        log.error("No OpenAlex author found for %s", member.name)
+    if not member.openalex_id:
         return None
-    log.info("Top OpenAlex candidates for %r:", member.name)
-    for h in hits[:3]:
-        log.info("  - %s (id=%s, works=%d, cited_by=%d)",
-                 h.get("display_name"), h.get("id"),
-                 h.get("works_count", 0), h.get("cited_by_count", 0))
-    return hits[0].get("id")
+    if member.openalex_id.startswith("http"):
+        return member.openalex_id
+    return f"https://openalex.org/{member.openalex_id}"
 
 
 def _to_candidate(work: dict) -> Candidate:
@@ -113,15 +81,15 @@ def _to_candidate(work: dict) -> Candidate:
 def fetch(member: Member, settings: Settings) -> list[Candidate]:
     """Return all OpenAlex works for `member` as Candidate records.
 
-    Returns an empty list if the author can't be resolved. Applies
-    `settings.min_year` here so downstream code never sees old works.
+    Returns an empty list if the member has no `openalex_id` — there is
+    no name-search fallback by design. Applies `settings.min_year` here
+    so downstream code never sees old works.
     """
+    author_id = author_url(member)
+    if not author_id:
+        return []
+    log.info("OpenAlex author for %s: %s", member.name, author_id)
     with _client(settings) as client:
-        author_id = resolve_author_id(client, member, settings)
-        if not author_id:
-            return []
-        log.info("OpenAlex author for %s: %s", member.name, author_id)
-
         candidates: list[Candidate] = []
         cursor = "*"
         while cursor:

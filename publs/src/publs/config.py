@@ -46,23 +46,29 @@ class Settings:
 class Member:
     """One person from members.yaml.
 
-    Identifier fields are tried in priority order by each source:
-    `openalex_id` (most reliable), then `orcid`, then a name search.
-    `scholar_id` is reserved for the future Google Scholar integration.
+    Each per-platform ID is optional. A member with `openalex_id: null`
+    is silently skipped for OpenAlex queries (and likewise for `orcid`
+    -> Crossref and `scholar_id` -> Google Scholar). Missing IDs are
+    surfaced as a LOUD end-of-run warning so they're never invisible,
+    but they don't fail the run.
     """
 
     name: str
     role: str | None = None
-    openalex_id: str | None = None
-    orcid: str | None = None
-    scholar_id: str | None = None
+    openalex_id: str | None = None    # https://openalex.org/A...
+    orcid: str | None = None          # used by Crossref + ORCID itself
+    scholar_id: str | None = None     # https://scholar.google.com/?user=...
     include: bool = True
 
-    @property
-    def surname(self) -> str:
-        """Last whitespace-separated token of the display name."""
-        parts = self.name.split()
-        return parts[-1] if parts else self.name
+
+# Per-source mapping. Drives the end-of-run gap warning and the
+# per-member skip in each command. Keep in lockstep with Source enums
+# in publs.sources when those land.
+ID_FIELD_BY_SOURCE: dict[str, str] = {
+    "openalex": "openalex_id",
+    "crossref": "orcid",
+    "scholar":  "scholar_id",
+}
 
 
 @dataclass(frozen=True)

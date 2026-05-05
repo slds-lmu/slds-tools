@@ -19,7 +19,7 @@ import sys
 import click
 
 from .bibdb import BibDB
-from .config import Member, Settings
+from .config import ID_FIELD_BY_SOURCE, Member, Settings
 from .models import Candidate
 from .sources import openalex
 
@@ -136,9 +136,13 @@ def review_all(members: list[Member], db: BibDB, settings: Settings,
         click.echo(f"source {source!r} is not implemented yet", err=True)
         sys.exit(2)
 
+    id_field = ID_FIELD_BY_SOURCE[source]
     total_accepted = total_rejected = 0
     for m in members:
-        click.echo(f"\nfetching from openalex: {m.name}")
+        if not getattr(m, id_field):
+            click.echo(f"\nskipping {m.name}: no {id_field}")
+            continue
+        click.echo(f"\nfetching from {source}: {m.name}")
         cands = openalex.fetch(m, settings)
         click.echo(f"  {len(cands)} works after min_year filter")
         from .match import split_missing

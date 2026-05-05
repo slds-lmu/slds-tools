@@ -3,7 +3,9 @@ general:
   clean up the slds-website repo. it has issues and PRs
   check shell-zsh better. also use it for my own laptop.
     maybe oh-my-zsh?
-  in the   
+  in wintermute doc how claude actually works. memomry. projects.
+  rules and agents files. hotkeys. how to setup claude with user prefs that i like.
+
 
 
 publs:
@@ -14,6 +16,8 @@ we should inititally check all other files, and only add in bibs which make sens
 
 
 sandbox:
+
+we need to check / config how mem works when we are in the sandbox.
 
 in README doc the zsh shell BRIEFLY, usage
 

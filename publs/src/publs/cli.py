@@ -20,10 +20,59 @@ from pathlib import Path
 import click
 
 from .bibdb import BibDB
-from .config import MemberList, Settings
+from .config import ID_FIELD_BY_SOURCE, Member, MemberList, Settings
 from .match import split_missing
 from .review import review_all
 from .sources import openalex
+
+
+def _warn_id_gaps(all_members: list[Member]) -> None:
+    """Print a LOUD end-of-run summary of which platform IDs are missing.
+
+    No name-search fallback exists; a missing ID just means that member
+    is silently skipped on that platform. The warning is the only thing
+    keeping the gap visible. We always run it across the full members
+    list, not just the ones selected for this run, so the picture is
+    complete regardless of `--member` filtering.
+    """
+    gaps: dict[str, list[str]] = {src: [] for src in ID_FIELD_BY_SOURCE}
+    for m in all_members:
+        if not m.include:
+            continue
+        for source, field_name in ID_FIELD_BY_SOURCE.items():
+            if not getattr(m, field_name):
+                gaps[source].append(m.name)
+
+    if not any(gaps.values()):
+        return
+
+    bar = "*" * 72
+    click.echo()
+    click.echo(click.style(bar, fg="yellow", bold=True))
+    click.echo(click.style(
+        "WARNING: members.yaml has missing IDs. These members are SKIPPED",
+        fg="yellow", bold=True,
+    ))
+    click.echo(click.style(
+        "for the corresponding platform — the tool does NOT search by name.",
+        fg="yellow", bold=True,
+    ))
+    click.echo(click.style(bar, fg="yellow", bold=True))
+    for source, names in gaps.items():
+        if not names:
+            continue
+        field_name = ID_FIELD_BY_SOURCE[source]
+        click.echo(click.style(
+            f"  {field_name:<13} ({source}): {len(names)} missing",
+            fg="yellow", bold=True,
+        ))
+        for n in names:
+            click.echo(click.style(f"      - {n}", fg="yellow"))
+    click.echo(click.style(bar, fg="yellow", bold=True))
+    click.echo(click.style(
+        "Edit members.yaml to fill in IDs and widen coverage.",
+        fg="yellow", bold=True,
+    ))
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 DEFAULT_MEMBERS = Path(__file__).resolve().parents[2] / "members.yaml"
@@ -56,15 +105,15 @@ def main(ctx: click.Context, config: Path, members_path: Path, verbose: bool) ->
 @main.command(name="members")
 @click.pass_context
 def members_cmd(ctx: click.Context) -> None:
-    """List configured members and which external IDs they have."""
+    """List configured members and which per-platform IDs they have."""
+    # 3-column flag: OA OR GS, with '--' for missing.
     for m in ctx.obj["members"].members:
-        ids = []
-        if m.openalex_id: ids.append("OA")
-        if m.orcid:       ids.append("OR")
-        if m.scholar_id:  ids.append("GS")
-        flag = ",".join(ids) if ids else "name-search"
+        oa = "OA" if m.openalex_id else "--"
+        orc = "OR" if m.orcid       else "--"
+        gs = "GS" if m.scholar_id  else "--"
         skip = " [skipped]" if not m.include else ""
-        click.echo(f"  {flag:<14} {m.name}{skip}  ({m.role or '?'})")
+        click.echo(f"  [{oa} {orc} {gs}]  {m.name}{skip}  ({m.role or '?'})")
+    _warn_id_gaps(ctx.obj["members"].members)
 
 
 @main.command()
@@ -78,6 +127,7 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
     if source != "openalex":
         raise click.ClickException(f"source {source!r} is not implemented yet")
     settings: Settings = ctx.obj["settings"]
+    all_members = ctx.obj["members"].members
     members = ctx.obj["members"].select(name)
     if not members:
         raise click.ClickException(f"No members matched {name!r}.")
@@ -88,7 +138,11 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
     click.echo(f"SSOT: {settings.ssot_path} ({len(db)} entries)")
     click.echo()
     grand_total = grand_missing = 0
+    id_field = ID_FIELD_BY_SOURCE[source]
     for m in members:
+        if not getattr(m, id_field):
+            click.echo(f"  {m.name:<30}  -- skipped (no {id_field})")
+            continue
         cands = openalex.fetch(m, settings)
         missing = split_missing(cands, db)
         grand_total += len(cands)
@@ -98,6 +152,7 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
     click.echo()
     click.echo(f"  {'TOTAL':<30}  {grand_total:>4} candidates  "
                f"{grand_missing:>4} missing")
+    _warn_id_gaps(all_members)
 
 
 @main.command()
@@ -109,6 +164,7 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
 def review(ctx: click.Context, name: str | None, source: str) -> None:
     """Interactive: walk through missing candidates and accept / reject."""
     settings: Settings = ctx.obj["settings"]
+    all_members = ctx.obj["members"].members
     members = ctx.obj["members"].select(name)
     if not members:
         raise click.ClickException(f"No members matched {name!r}.")
@@ -118,6 +174,7 @@ def review(ctx: click.Context, name: str | None, source: str) -> None:
         raise click.ClickException(str(e)) from None
     click.echo(f"SSOT: {settings.ssot_path} ({len(db)} entries)")
     review_all(members, db, settings, source=source)
+    _warn_id_gaps(all_members)
 
 
 if __name__ == "__main__":
