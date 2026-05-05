@@ -204,30 +204,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # package version, it falls back to source — see the R-package source-compile
 # system deps layer immediately above.
 #
-# Failure handling: install.packages() emits a *warning* (not an error)
-# when a package fails to install — the R process exits 0 either way.
-# We verify after the fact by diffing the requested set against
-# rownames(installed.packages()) and stop() with a non-zero exit on any
-# missing package, so the docker build aborts at this layer instead of
-# silently producing an image without the requested R stack.
-RUN Rscript - <<'EOF'
-options(
-    repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/noble/latest"),
-    Ncpus = max(1L, parallel::detectCores() - 1L)  # parallel compile if any source pkg slips through
-)
-pkgs <- c(
-    "tidyverse",   # tidyverse: meta-pkg of dplyr/ggplot2/tidyr/readr — standard toolkit
-    "data.table",  # data.table: fast in-memory tabular data manipulation
-    "ggplot2",     # ggplot2: grammar-of-graphics plotting (also bundled in tidyverse)
-    "knitr",       # knitr: dynamic report generation (Rnw / Rmd weaving)
-    "devtools"     # devtools: package-development helpers (install_github, document, check)
-)
-install.packages(pkgs)
-missing <- setdiff(pkgs, rownames(installed.packages()))
-if (length(missing)) {
-    stop("install.packages() failed for: ", paste(missing, collapse = ", "), call. = FALSE)
-}
-EOF
+# Install script lives in install_cran.R (kept out of the Dockerfile so the
+# build works with both BuildKit and the legacy builder — Dockerfile-level
+# heredocs are a BuildKit-only feature). See that file for failure handling
+# and the package list.
+COPY install_cran.R /tmp/install_cran.R
+RUN Rscript /tmp/install_cran.R && rm /tmp/install_cran.R
 
 # --- mlr3 ecosystem (via pak) -------------------------------------------------
 # pak resolves and installs binary packages across PPM + r-universe.
@@ -244,29 +226,10 @@ EOF
 # any "package missing on Linux noble" condition surfaces as a hard pak
 # error rather than a slow source-compile attempt that may also fail.
 #
-# Failure handling: pak::pak() raises a hard error (non-zero R exit) on
-# resolution / install failure, but we still post-check installed.packages()
-# defensively so a future pak release that downgrades errors to warnings
-# still trips this layer.
-RUN Rscript - <<'EOF'
-Sys.setenv(NOT_CRAN = "true")
-install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-pak::repo_add(
-    PPM          = "https://packagemanager.posit.co/cran/__linux__/noble/latest",
-    mlr3universe = "https://mlr-org.r-universe.dev",
-    multiverse   = "https://community.r-multiverse.org")
-pkgs <- c(
-    "mlr3verse",    # mlr3verse: meta-pkg pulling mlr3 + pipelines + tuning + viz
-    "bbotk",        # bbotk: black-box optimization toolkit, optimizer foundation under mlr3tuning
-    "mlr3oml",      # mlr3oml: OpenML integration (fetch tasks/datasets from openml.org)
-    "mlr3learners"  # mlr3learners: extra learners (xgboost, ranger, glmnet, lightgbm, ...)
-)
-pak::pak(pkgs, dependencies = TRUE, ask = FALSE)
-missing <- setdiff(pkgs, rownames(installed.packages()))
-if (length(missing)) {
-    stop("pak::pak() failed for: ", paste(missing, collapse = ", "), call. = FALSE)
-}
-EOF
+# Install script lives in install_mlr3.R; see that file for repository
+# policy and failure handling.
+COPY install_mlr3.R /tmp/install_mlr3.R
+RUN Rscript /tmp/install_mlr3.R && rm /tmp/install_mlr3.R
 
 # --- Python (3.12 from Ubuntu 24.04) -----------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -308,12 +271,21 @@ RUN pip install --no-cache-dir playwright \
 
 # --- Developer tools (gh, vim, zsh, fzf) -------------------------------------
 # gh requires its own apt repo; the rest are plain Ubuntu apt packages.
+#
+# Note on path-include: Ubuntu's docker base image ships
+# /etc/dpkg/dpkg.cfg.d/excludes which strips /usr/share/doc/* to keep the
+# image slim. fzf's shell integration files (key-bindings.zsh, completion.zsh)
+# live there, so without an opt-in they get filtered out and Ctrl-R / Ctrl-T
+# / Alt-C don't bind. We add a dpkg path-include for fzf's examples directory
+# BEFORE running apt-install.
 RUN install -d -m 0755 /etc/apt/keyrings \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
+    && echo 'path-include=/usr/share/doc/fzf/examples/*' \
+        > /etc/dpkg/dpkg.cfg.d/zz-keep-fzf-shell-integration \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         # gh: GitHub CLI (`gh pr create`, `gh issue list`, etc.)
