@@ -5,6 +5,17 @@
 
 FROM ubuntu:24.04
 
+# Make every shell-form RUN fail-fast. Without this, the default shell is
+# `/bin/sh -c` (dash), where chained commands separated by `;` continue past
+# errors and broken pipelines (e.g. `curl ... | bash`) hide upstream failures.
+# Bash strict mode catches all three:
+#   -e            : abort on first non-zero exit
+#   -o pipefail   : a pipeline fails if any stage fails (so `curl | bash`
+#                   exits non-zero when curl fails, not silently when bash
+#                   gets an empty stdin)
+#   -c            : execute the following string (Docker passes the RUN body)
+SHELL ["/bin/bash", "-eo", "pipefail", "-c"]
+
 # DEBIAN_FRONTEND=noninteractive: prevent apt prompts (e.g. tzdata) during build.
 # LANG/LC_ALL: default to UTF-8 so Unicode I/O in R/Python "just works".
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -117,7 +128,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # so build/render of any reasonable LaTeX/Rnw/Rmd document just works without
 # whack-a-mole over missing CTAN packages. Latexmk and biber come along for
 # the ride; pandoc/qpdf/tidy/lmodern complete the document toolchain.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+#
+# Apt resilience is dropped in *here* (not earlier) because this is the first
+# layer where a flaky archive.ubuntu.com mirror has a near-certain chance of
+# hitting at least one timeout — texlive-full pulls ~3000 individual .deb
+# files. Without retries, a single transient connection-refused on any one of
+# them aborts the whole `apt-get install`. The 80-retries snippet is written
+# to /etc/apt/apt.conf.d/ so it persists in the image and every subsequent
+# apt-using layer (CRAN R repo, Python, gh, Node) inherits the same defence.
+#   Acquire::Retries        : up to 5 retry attempts per failed .deb fetch
+#   Acquire::http::Timeout  : 120s per HTTP connect/read (default 100s);
+#                             keeps slow but-not-dead mirrors from being
+#                             classified as failures.
+RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
+    && echo 'Acquire::http::Timeout "120";' >> /etc/apt/apt.conf.d/80-retries \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         # pandoc: universal document converter used by knitr/rmarkdown
         pandoc \
         # tidy: HTML/XML tidier for generated documents
@@ -145,36 +171,101 @@ RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
         r-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# --- R-package source-compile system deps -----------------------------------
+# PPM's `__linux__/noble/latest` URL serves pre-compiled binaries for most
+# CRAN packages, but FALLS BACK to source tarballs when PPM does not yet
+# have a binary for a specific package@version (typically true for the first
+# few hours/days after a CRAN release). When that happens, R compiles from
+# source in the next layer — and source compiles need the relevant -dev
+# system libraries.
+#
+# The libs below cover the source-compile system requirements for packages
+# in the SLDS R stack (tidyverse + mlr3) that aren't already covered by the
+# scientific-libs layer above:
+#   libuv1-dev      : required by `fs` (it falls back to source whenever
+#                     PPM lags CRAN; observed failure on fs 2.1.0 build).
+#   libsodium-dev   : required by `sodium` (transitive dep of httr2/oauth flows).
+#   libsecret-1-dev : required by `keyring` (used by gh / git auth helpers).
+#
+# Adding more libs here is the right answer to "package X failed to source-
+# compile because lib Y was missing" — keep it scoped to actual R deps so the
+# image doesn't bloat with every unrelated -dev package.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libuv1-dev \
+        libsodium-dev \
+        libsecret-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Core CRAN R packages installed as precompiled binaries via Posit Public
-# Package Manager (much faster than source compilation).
+# Package Manager (PPM). PPM serves binary tarballs at the
+# `__linux__/noble/latest` URL; install.packages downloads them and R
+# CMD INSTALL drops them in without compilation, much faster than the
+# source-compile path. When PPM hasn't yet built a binary for a specific
+# package version, it falls back to source — see the R-package source-compile
+# system deps layer immediately above.
+#
+# Failure handling: install.packages() emits a *warning* (not an error)
+# when a package fails to install — the R process exits 0 either way.
+# We verify after the fact by diffing the requested set against
+# rownames(installed.packages()) and stop() with a non-zero exit on any
+# missing package, so the docker build aborts at this layer instead of
+# silently producing an image without the requested R stack.
 RUN Rscript - <<'EOF'
-options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/noble/latest"))
-install.packages(c(
+options(
+    repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/noble/latest"),
+    Ncpus = max(1L, parallel::detectCores() - 1L)  # parallel compile if any source pkg slips through
+)
+pkgs <- c(
     "tidyverse",   # tidyverse: meta-pkg of dplyr/ggplot2/tidyr/readr — standard toolkit
     "data.table",  # data.table: fast in-memory tabular data manipulation
     "ggplot2",     # ggplot2: grammar-of-graphics plotting (also bundled in tidyverse)
     "knitr",       # knitr: dynamic report generation (Rnw / Rmd weaving)
     "devtools"     # devtools: package-development helpers (install_github, document, check)
-))
+)
+install.packages(pkgs)
+missing <- setdiff(pkgs, rownames(installed.packages()))
+if (length(missing)) {
+    stop("install.packages() failed for: ", paste(missing, collapse = ", "), call. = FALSE)
+}
 EOF
 
 # --- mlr3 ecosystem (via pak) -------------------------------------------------
-# pak resolves and installs binary packages quickly across CRAN + r-universe.
+# pak resolves and installs binary packages across PPM + r-universe.
+#
+# Repository policy:
+#   - PPM (Posit Public Package Manager): primary CRAN mirror, serves
+#     pre-compiled binaries for noble at the `__linux__/noble/latest` URL.
+#   - mlr-org.r-universe.dev: r-universe binaries for the latest mlr3
+#     development releases (often ahead of CRAN).
+#   - community.r-multiverse.org: r-universe binaries for community packages
+#     not yet (or never) on CRAN.
+# We deliberately do NOT add a source-only fallback like cloud.r-project.org —
+# all three repos serve binaries, so pak resolves only binary candidates and
+# any "package missing on Linux noble" condition surfaces as a hard pak
+# error rather than a slow source-compile attempt that may also fail.
+#
+# Failure handling: pak::pak() raises a hard error (non-zero R exit) on
+# resolution / install failure, but we still post-check installed.packages()
+# defensively so a future pak release that downgrades errors to warnings
+# still trips this layer.
 RUN Rscript - <<'EOF'
 Sys.setenv(NOT_CRAN = "true")
 install.packages("pak", repos = sprintf("https://r-lib.github.io/p/pak/stable/%s/%s/%s", .Platform$pkgType, R.Version()$os, R.Version()$arch))
-# CRAN is added as a fallback: pak's default binary repo (PPM) can lag CRAN
-# for a few hours/days after new package releases.
 pak::repo_add(
-    CRAN2        = "https://cloud.r-project.org",
+    PPM          = "https://packagemanager.posit.co/cran/__linux__/noble/latest",
     mlr3universe = "https://mlr-org.r-universe.dev",
     multiverse   = "https://community.r-multiverse.org")
-pak::pak(c(
+pkgs <- c(
     "mlr3verse",    # mlr3verse: meta-pkg pulling mlr3 + pipelines + tuning + viz
     "bbotk",        # bbotk: black-box optimization toolkit, optimizer foundation under mlr3tuning
     "mlr3oml",      # mlr3oml: OpenML integration (fetch tasks/datasets from openml.org)
     "mlr3learners"  # mlr3learners: extra learners (xgboost, ranger, glmnet, lightgbm, ...)
-), dependencies = TRUE, ask = FALSE)
+)
+pak::pak(pkgs, dependencies = TRUE, ask = FALSE)
+missing <- setdiff(pkgs, rownames(installed.packages()))
+if (length(missing)) {
+    stop("pak::pak() failed for: ", paste(missing, collapse = ", "), call. = FALSE)
+}
 EOF
 
 # --- Python (3.12 from Ubuntu 24.04) -----------------------------------------
@@ -249,10 +340,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
 
 # --- air: Posit's R formatter (Rust binary) ----------------------------------
 # air: opinionated R code formatter from Posit (Rust, very fast).
-# Installed via the cargo-dist shell installer; CARGO_HOME pins the binary
-# under /usr/local so it lands on the global PATH.
-RUN CARGO_HOME=/usr/local \
-    curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-installer.sh | sh
+# Installed via the cargo-dist shell installer.
+#
+# Why we move the binary post-install: the installer is cargo-dist's, NOT
+# the cargo CLI's, so it does NOT honour CARGO_HOME. It always drops the
+# binary at $HOME/.local/bin/<bin> (`/root/.local/bin/air` during the build)
+# and that path is NOT on the runtime PATH for any user. cargo-dist exposes
+# CARGO_DIST_FORCE_INSTALL_DIR but that name is liable to change between
+# cargo-dist releases; the post-install `mv` is robust against that and
+# leaves no behind-image cruft.
+RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-installer.sh | sh \
+    && mv /root/.local/bin/air /usr/local/bin/air \
+    && rm -rf /root/.local /root/.config/air
 
 # Default shell when running `docker run -it`.
 CMD ["/bin/zsh"]
