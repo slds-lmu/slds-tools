@@ -8,7 +8,7 @@ by surfacing candidates from external sources for human accept/reject.
 ## General
 - Maintain a short, human-facing `architecture.md` that explains the general principles, and be aware of its contents.
 - Use `PLAN.md` for your own internal planning and notes after communication with me. Maintain and clean it up yourself.
-- The SSOT is never auto-rewritten wholesale.
+
 
 ## Source priority
 - Sources are listed in `architecture.md`; build code for them in that order (OpenAlex first, Google Scholar last).
@@ -23,4 +23,11 @@ by surfacing candidates from external sources for human accept/reject.
 - Pick the single best home for a piece of doc
 - Elsewhere, either be brief or use a one-line pointer 
 - Redundant prose drifts out of sync and bloats
+
+
+## BibTex handling
+
+- The SSOT is never auto-rewritten wholesale.
+- No heuristics that guess SSOT entry provenance; treat every BibTeX entry uniformly. 
+  Do NOT branch on "looks hand-curated" vs "looks tool-generated".
 

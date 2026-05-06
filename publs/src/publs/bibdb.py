@@ -62,6 +62,54 @@ def normalize_doi(doi: str) -> str:
     return s.lower()
 
 
+def add_fields(entry_text: str, additions: list[tuple[str, str]]) -> str:
+    """Insert new fields into an existing BibTeX entry block.
+
+    Reuses the indent and `<sep>=<sep>` style of the entry's existing
+    field lines so the patched block is visually consistent with the
+    surrounding SSOT formatting. New fields are inserted just before
+    the closing brace, in the order given. Existing fields, the entry
+    type, the citation key, and any other formatting are left intact.
+
+    Inputs:
+        entry_text: a complete '@type{key, ... }' block, no trailing newline.
+        additions:  list of (bibtex_field_name, value) pairs to append.
+
+    Returns: the patched entry text (no trailing newline).
+    """
+    if not additions:
+        return entry_text
+    close = entry_text.rfind("}")
+    if close == -1:
+        raise ValueError("malformed entry: no closing brace")
+    body, tail = entry_text[:close], entry_text[close:]
+
+    lines = body.splitlines()
+    indent, sep = "  ", " = "
+    for line in reversed(lines):
+        m = re.match(r"^(\s+)(\S+)(\s*=\s*)", line)
+        if m:
+            indent, sep = m.group(1), m.group(3)
+            break
+
+    # Ensure the previous last field ends with a comma so the file
+    # still parses after we append.
+    for i in range(len(lines) - 1, -1, -1):
+        if "=" in lines[i]:
+            stripped = lines[i].rstrip()
+            if not stripped.endswith(","):
+                lines[i] = stripped + ","
+            break
+
+    for j, (name, value) in enumerate(additions):
+        line = f"{indent}{name}{sep}{{{value}}}"
+        if j < len(additions) - 1:
+            line += ","
+        lines.append(line)
+
+    return "\n".join(lines) + "\n" + tail
+
+
 def _scan_entry_spans(text: str) -> dict[str, tuple[int, int]]:
     """Locate each @entry block's (start, end) byte offsets in `text`.
 

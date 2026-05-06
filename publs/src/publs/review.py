@@ -25,8 +25,9 @@ import sys
 
 import click
 
-from .bibdb import BibDB
+from .bibdb import BibDB, add_fields
 from .config import ID_FIELD_BY_SOURCE, Member, Settings
+from .match import FieldFix
 from .models import Candidate
 from .sources import openalex
 
@@ -73,19 +74,18 @@ def _extract_key(bibtex_entry: str) -> str:
     return key.strip()
 
 
-def _render_diff(old_text: str, new_text: str, key: str,
-                 fixes: tuple[str, ...]) -> str:
+def _render_diff(old_text: str, new_text: str, key: str, label: str) -> str:
     """Color-render a unified diff of old vs proposed entry text.
 
-    Inputs are stripped of leading/trailing whitespace by the caller so
-    the diff focuses on the entry block itself, not the surrounding
-    blank lines that exist only in the on-disk file.
+    Caller strips trailing whitespace from both sides so the diff
+    focuses on the entry block itself, not surrounding blank lines.
+    `label` is the prompt-side description (e.g. "adds: doi, venue").
     """
     diff = difflib.unified_diff(
         old_text.splitlines(),
         new_text.splitlines(),
         fromfile=f"slds.bib (current @{key})",
-        tofile=f"proposed (adds: {', '.join(fixes) or '?'})",
+        tofile=f"proposed ({label})",
         lineterm="",
     )
     out: list[str] = []
@@ -166,16 +166,17 @@ def review_member(member: Member, candidates: list[Candidate],
 
 def review_outdated_member(
     member: Member,
-    items: list[tuple[Candidate, str, tuple[str, ...]]],
+    items: list[tuple[Candidate, str, tuple[FieldFix, ...]]],
     db: BibDB, settings: Settings,
 ) -> tuple[int, int, bool]:
-    """Walk through outdated entries (replace flow) interactively.
+    """Walk through outdated entries (additive replace flow) interactively.
 
-    For each (Candidate, old_key, fixes) tuple, build a fresh BibTeX
-    block from the candidate, rewrite its citation key to `old_key` so
-    external references stay intact, render a unified diff of the
-    current SSOT block vs the proposal, and prompt a/r/s/q. Accept
-    triggers an atomic in-place replace.
+    For each (Candidate, old_key, fixes) tuple, build the proposal by
+    inserting the missing field(s) into the existing SSOT entry text —
+    the citation key, entry type, all other fields, and the formatting
+    are preserved verbatim. Render a unified diff (which therefore
+    shows only added lines) and prompt a/r/s/q. Accept triggers an
+    atomic in-place replace.
 
     Returns (accepted, rejected, quit) like review_member.
     """
@@ -190,8 +191,6 @@ def review_outdated_member(
     ))
 
     for i, (cand, old_key, fixes) in enumerate(items, start=1):
-        new_bib, label = _build_entry(cand, settings)
-        new_block = BibDB._rekey(new_bib, old_key).strip()
         try:
             old_text = db.get_entry_text(old_key).rstrip()
         except KeyError:
@@ -200,10 +199,13 @@ def review_outdated_member(
             log.warning("entry @%s no longer in SSOT; skipping", old_key)
             continue
 
+        additions = [(f.bib_name, f.value) for f in fixes]
+        labels = ", ".join(f.label for f in fixes)
+        new_block = add_fields(old_text, additions)
+
         click.echo()
-        click.echo(f"[{i}/{len(items)}] @{old_key}  (adds: {', '.join(fixes)})")
-        click.echo(f"  source: {label}")
-        click.echo(_render_diff(old_text, new_block, old_key, fixes))
+        click.echo(f"[{i}/{len(items)}] @{old_key}")
+        click.echo(_render_diff(old_text, new_block, old_key, f"adds: {labels}"))
         while True:
             choice = click.prompt(
                 "  [a]ccept replace / [r]eject / [s]kip / [q]uit",
@@ -212,7 +214,7 @@ def review_outdated_member(
             if choice in ("a", "accept"):
                 db.replace(old_key, new_block)
                 click.echo(click.style(
-                    f"  ~ replaced @{old_key}  ({label})", fg="magenta",
+                    f"  ~ replaced @{old_key}  (added: {labels})", fg="magenta",
                 ))
                 accepted += 1
                 break
