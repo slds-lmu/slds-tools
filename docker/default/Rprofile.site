@@ -1,6 +1,8 @@
 # Purpose: System-wide R startup script — sets PPM as the default CRAN mirror
 #          and configures HTTPUserAgent so PPM serves pre-compiled noble
-#          binaries instead of source tarballs.
+#          binaries instead of source tarballs. A vanilla CRAN mirror is
+#          chained as a source-install fallback for packages PPM does not
+#          ship as a noble binary.
 #
 # Read at every R startup (see ?Rprofile). Therefore an interactive
 # `install.packages("foo")` inside the running container hits PPM by default.
@@ -15,6 +17,16 @@ local({
     # time) because at runtime users typically want current packages, not
     # whatever was current the day the image was baked.
     repos["CRAN"] <- "https://packagemanager.posit.co/cran/__linux__/noble/latest"
+    # Source fallback: install.packages() searches repos in order, so if PPM
+    # has no noble binary for a requested package, R falls through here and
+    # installs from source. cloud.r-project.org is a plain CRAN mirror —
+    # serves source tarballs on Linux, no UA-dependent binary tricks. The
+    # image ships the system headers needed to compile most CRAN packages
+    # (see README "Contents"), so source compiles succeed.
+    # Contrast with build-time install_packages.R, which deliberately omits
+    # this fallback so missing-binary conditions surface as hard errors
+    # instead of slow source builds.
+    repos["CRAN_SRC"] <- "https://cloud.r-project.org"
     options(repos = repos)
 })
 
