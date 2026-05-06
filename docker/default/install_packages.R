@@ -21,6 +21,17 @@
 # resolution / install failure, but we still post-check installed.packages()
 # defensively so a future pak release that downgrades errors to warnings
 # still trips this layer.
+#
+# Why this script does NOT inherit repos from Rprofile.site, even though pak
+# honours getOption("repos"):
+#   1. Different PPM URL semantics. Build wants a date-pinned snapshot (line
+#      below) for reproducibility; Rprofile.site uses `__linux__/noble/latest`
+#      so long-lived containers don't get stuck on bake-day packages. Same
+#      `CRAN` slot, different URLs — they cannot share.
+#   2. Build-only repos. mlr3universe and multiverse belong here but should
+#      not leak into runtime: an interactive `install.packages("foo")`
+#      shouldn't silently resolve `foo` against r-universe (unexpected
+#      upstream, no version pinning).
 
 Sys.setenv(NOT_CRAN = "true")
 install.packages(

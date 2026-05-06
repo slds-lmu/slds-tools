@@ -29,6 +29,11 @@ sandbox:
 - when something fails, stop the build? why would we go on?
 - the docker image will be used by many ppl. we should really ensure by testing in the 
   CI that nothing is broken and claude shold check that too
+- Look at: https://github.com/finbarr/yolobox
+- devc needs to work cross-platform
+- We probably want a user-friendly cli tool that works cross-platform
+  --> devc probably does not work on windows (?), so we should write the CLI tool e.g. in Go, just like yolobox
+- The whole setup needs to be easy to use and easy to understand so everyone from the group can use it
 
 - do security hardening with claude on the docker container. we dont want claude to access
   ANY secrets on the normal machine, in home, or in the keyring. all access should be ACTIVELY managed

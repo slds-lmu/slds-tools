@@ -184,6 +184,22 @@ RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
 COPY install_packages.R /tmp/install_packages.R
 RUN Rscript /tmp/install_packages.R && rm /tmp/install_packages.R
 
+# --- R runtime defaults: PPM as the CRAN mirror -------------------------------
+# /etc/R/Rprofile.site runs at every R startup, so install.packages("...")
+# inside the running container lands binary noble packages from PPM by
+# default. Copied AFTER install_packages.R intentionally — the build-time
+# layer must keep using pak's own repo config, not these runtime defaults.
+#
+# The post-COPY sanity check fails the build if Rprofile.site is not picked
+# up by R at startup (wrong path, conffile shadowing, packaging change in a
+# future r-base release, ...). Without it, a path regression would silently
+# leave PPM unset and downgrade every runtime install.packages() call to
+# source builds against the default unset CRAN mirror — which is the kind
+# of failure that wouldn't be noticed until someone wonders why their image
+# takes 20 min to add a package.
+COPY Rprofile.site /etc/R/Rprofile.site
+RUN R -q -e 'stopifnot(grepl("packagemanager.posit.co", getOption("repos")[["CRAN"]]))'
+
 # --- Python (3.12 from Ubuntu 24.04) -----------------------------------------
 # Ubuntu 24.04 ships /usr/lib/python3.12/EXTERNALLY-MANAGED (PEP 668), which
 # blocks plain `pip install` outside a venv with an "externally-managed-
