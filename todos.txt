@@ -18,6 +18,7 @@ publs:
 - README needs to be completely rehauled to become user docs
 - check if we really need config.yaml and all its entries
 - we need to check what we do with the tags and the subgroups. this might fuck stuff up
+- always strip out abstracts from existing file and new candidates. check what else sto strip
 
 sandbox:
 
