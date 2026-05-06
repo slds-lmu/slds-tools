@@ -185,20 +185,21 @@ COPY install_packages.R /tmp/install_packages.R
 RUN Rscript /tmp/install_packages.R && rm /tmp/install_packages.R
 
 # --- Python (3.12 from Ubuntu 24.04) -----------------------------------------
+# Ubuntu 24.04 ships /usr/lib/python3.12/EXTERNALLY-MANAGED (PEP 668), which
+# blocks plain `pip install` outside a venv with an "externally-managed-
+# environment" error. PEP 668 protects host systems where apt and pip both
+# manage Python — a problem this image doesn't have, since every Python
+# package below is pip-installed (no apt-installed `python3-numpy` etc.).
+# Deleting the marker lets `pip install` write system-wide to
+# /usr/local/lib/python3.12/dist-packages, which is the simplest mental model
+# for a single-purpose container.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         # python3: Python 3.12 interpreter (Ubuntu 24.04 default)
         python3 \
         # python3-pip: pip package installer
         python3-pip \
-        # python3-venv: venv module for creating isolated environments
-        python3-venv \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create a global venv at /opt/venv and put it on PATH so subsequent pip /
-# python invocations use it (sidesteps PEP 668's externally-managed lock).
-ENV VIRTUAL_ENV=/opt/venv \
-    PATH=/opt/venv/bin:$PATH
-RUN python3 -m venv "$VIRTUAL_ENV"
+    && rm -rf /var/lib/apt/lists/* \
+    && rm /usr/lib/python3.12/EXTERNALLY-MANAGED
 
 RUN pip install --no-cache-dir \
         # numpy: n-dim arrays, foundation of the SciPy stack
@@ -213,7 +214,7 @@ RUN pip install --no-cache-dir \
         jupyter
 
 # --- uv: Astral's fast Python package / project manager ----------------------
-# uv: Rust-based pip/pyenv replacement; installed into the venv so it is on PATH.
+# uv: Rust-based pip/pyenv replacement.
 RUN pip install --no-cache-dir uv
 
 # --- Playwright + Chromium ---------------------------------------------------

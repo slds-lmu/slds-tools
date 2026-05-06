@@ -9,7 +9,7 @@ It is multi-arch (`linux/amd64` + `linux/arm64`), so it also runs natively on Ap
 - **Base**: Ubuntu 24.04 LTS, locale `en_US.UTF-8`. 
 Default shell is **zsh**.
 - **R** (latest stable from CRAN) with tidyverse, data.table, knitr, devtools, the mlr3 ecosystem (`mlr3verse`, `mlr3learners`, `bbotk`, `mlr3oml`), and the `air` formatter.
-- **Python 3.12** in a venv at `/opt/venv` (on `PATH`) with the standard scientific stack (numpy, pandas, scikit-learn, matplotlib, jupyter), `uv`, and Playwright + Chromium.
+- **Python 3.12** (system-wide; `/usr/lib/python3.12/EXTERNALLY-MANAGED` removed so plain `pip install` works) with the standard scientific stack (numpy, pandas, scikit-learn, matplotlib, jupyter), `uv`, and Playwright + Chromium.
 - **LaTeX**: full `texlive-full` distribution plus pandoc, latexmk, biber, qpdf — any CTAN package should just work.
 - **Shell + dev tooling**: git, gh, ripgrep, jq, tmux, htop, GNU parallel, fzf, plus Node.js LTS with the `claude-code` and `codex` CLIs. System headers (cmake, gdal, proj, glpk, eigen, …) included so additional R/Python packages can be source-compiled on top.
 
@@ -59,7 +59,8 @@ or clear everything not currently in use with `docker system prune -a`.
 
 - **Ctrl-R / Ctrl-T / Alt-C** — fzf history search / file picker / cd into subdir
 - **→** — accept the gray ghost-text suggestion from history
-- The starship prompt auto-shows git status, Python venv, and language versions
+- **Starship prompt segments you'll see by default**: user, path, `container [Docker]`, 
+  plus git branch / status when inside a repo and language versions when relevant.
 
 ## Build locally
 
@@ -91,7 +92,7 @@ FROM ghcr.io/slds-lmu/default@sha256:9f3c1a4b8e2d6f7a0b1c2d3e4f5a6b7c8d9e0f1a2b3
 RUN R -e "install.packages(c('brms', 'rstan'), \
           repos = 'https://packagemanager.posit.co/cran/__linux__/noble/latest')"
 
-# Extra Python packages into the venv that's already on PATH at /opt/venv.
+# Extra Python packages installed system-wide (no venv — see Contents).
 RUN pip install --no-cache-dir lifelines tslearn
 
 # Extra apt packages (rare — `default` already covers the common cases).
