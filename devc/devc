@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# devc — open Cursor attached to a docker dev container for the current project.
+#
+# Subcommands:
+#   cursor  ensure container is running and open a Cursor window at /workspace
+#   stop    stop the project's container (auto-removed via `docker run --rm`)
+#
+# Hard-coded image, mode, and bind-mount. Project dir is the enclosing git
+# repo (or $PWD), bind-mounted at /workspace inside the container.
+#
+# Lifecycle: a `devc cursor` invocation lazy-starts a long-running
+# `sleep infinity` container that persists across Cursor windows; `devc stop`
+# is the only way to tear it down. `--rm` makes stop and remove a single
+# step, so there's no graveyard of stopped containers — and a host reboot
+# leaves a clean slate.
+
+set -euo pipefail
+
+IMAGE="ghcr.io/slds-lmu/default:latest"
+WORKDIR_IN_CONTAINER="/workspace"
+
+# Print short usage and exit non-zero. Used when args are missing/wrong.
+usage() {
+  echo "usage: devc {cursor|stop}" >&2
+  exit 2
+}
+
+# Echo a 12-char sha256 prefix of the given string. Used to disambiguate
+# project dirs that share a basename.
+hash_short() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+
+# Hex-encode a string (no newline). Cursor's attached-container URI requires
+# the container name encoded as hex: vscode-remote://attached-container+<hex>/...
+to_hex() { printf '%s' "$1" | od -An -tx1 | tr -d ' \n'; }
+
+# Echo the project directory: the git toplevel if inside a repo, else $PWD.
+project_dir() {
+  git rev-parse --show-toplevel 2>/dev/null || pwd
+}
+
+# Echo the container name for a project dir: devc-<basename>-<hash12>.
+container_name() {
+  local pd="$1"
+  echo "devc-$(basename "$pd")-$(hash_short "$pd")"
+}
+
+# Ensure the project's container is running. Creates it on first call with
+# the project bind-mounted at /workspace; subsequent calls are a no-op.
+# `--rm` means a stopped container is also gone — the only states we ever
+# observe are "running" or "doesn't exist".
+ensure_running() {
+  local name="$1" pd="$2"
+  if ! docker container inspect "$name" >/dev/null 2>&1; then
+    docker run -d --rm --name "$name" \
+      -v "$pd:$WORKDIR_IN_CONTAINER" \
+      -w "$WORKDIR_IN_CONTAINER" \
+      "$IMAGE" sleep infinity >/dev/null
+  fi
+}
+
+# Open Cursor attached to the container, pointing at /workspace.
+cmd_cursor() {
+  if ! command -v cursor >/dev/null 2>&1; then
+    echo "error: 'cursor' CLI not on PATH" >&2
+    exit 1
+  fi
+  local pd name hex
+  pd="$(project_dir)"
+  name="$(container_name "$pd")"
+  ensure_running "$name" "$pd"
+  hex="$(to_hex "$name")"
+  cursor --folder-uri "vscode-remote://attached-container+${hex}${WORKDIR_IN_CONTAINER}"
+}
+
+# Stop the project's container. With `--rm` on `docker run`, stop also
+# removes it. Prints a friendly message and exits 0 if there's nothing to
+# stop, so the command is safe to run blind.
+cmd_stop() {
+  local pd name
+  pd="$(project_dir)"
+  name="$(container_name "$pd")"
+  if docker container inspect "$name" >/dev/null 2>&1; then
+    docker stop "$name" >/dev/null
+  else
+    echo "no devc container running for this project (name: $name)"
+  fi
+}
+
+[[ $# -ge 1 ]] || usage
+case "$1" in
+  cursor) shift; [[ $# -eq 0 ]] || usage; cmd_cursor ;;
+  stop)   shift; [[ $# -eq 0 ]] || usage; cmd_stop ;;
+  *) usage ;;
+esac
