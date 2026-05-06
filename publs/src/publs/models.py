@@ -21,6 +21,10 @@ class Candidate:
         doi:           DOI (no URL prefix), if known
         type:          OpenAlex/Crossref-style type string ("journal-article", ...)
         url:           landing page URL, if known
+        is_preprint:   True if the source-side signals say this is a
+                       preprint / repository deposit rather than a final
+                       publication. Set by the source during normalization
+                       so downstream code stays source-agnostic.
         raw:           original record from the source (for debugging / fallback)
     """
 
@@ -33,4 +37,5 @@ class Candidate:
     doi: str = ""
     type: str = ""
     url: str = ""
+    is_preprint: bool = False
     raw: dict = field(default_factory=dict)

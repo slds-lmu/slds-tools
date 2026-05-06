@@ -247,7 +247,7 @@ def review_all(members: list[Member], db: BibDB, settings: Settings,
     id_field = ID_FIELD_BY_SOURCE[source]
     total_accepted = total_rejected = 0
     total_replaced = total_replaced_rejected = 0
-    from .match import split_review_set
+    from .match import dedup_preprint_pairs, split_review_set
 
     for m in members:
         if not getattr(m, id_field):
@@ -256,6 +256,13 @@ def review_all(members: list[Member], db: BibDB, settings: Settings,
         click.echo(f"\nfetching from {source}: {m.name}")
         cands = openalex.fetch(m, settings)
         click.echo(f"  {len(cands)} works after min_year filter")
+        cands, suppressed = dedup_preprint_pairs(cands)
+        if suppressed:
+            click.echo(f"  suppressed {len(suppressed)} preprint(s) "
+                       f"with a published twin in this batch:")
+            for s in suppressed:
+                snippet = s.title[:70] + ("..." if len(s.title) > 70 else "")
+                click.echo(f"    - [{s.year}] {snippet}")
         missing, outdated = split_review_set(cands, db)
         click.echo(f"  {len(missing)} missing / {len(outdated)} outdated")
 

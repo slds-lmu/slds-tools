@@ -53,6 +53,30 @@ def author_url(member: Member) -> str | None:
     return f"https://openalex.org/{member.openalex_id}"
 
 
+def _is_preprint(work: dict) -> bool:
+    """Best-effort 'is this a preprint?' classification from OpenAlex fields.
+
+    Two independent signals; either firing is enough:
+
+      - `type == "preprint"` — direct typing (e.g. bioRxiv, posted-content).
+      - `primary_location.source.type == "repository"` — the venue is a
+        preprint server / institutional repo (bioRxiv, arXiv, SSRN, OSF,
+        ResearchGate, ...) rather than a journal/proceedings publisher.
+
+    Known fragility: a journal that self-hosts on a repo platform (rare)
+    misclassifies, and a `type=="article"` deposit to a repository would
+    still trip the second rule. Used only for within-batch dedup against
+    a published twin, so a false positive at worst hides one of two
+    near-duplicates from review.
+    """
+    if (work.get("type") or "").lower() == "preprint":
+        return True
+    src = ((work.get("primary_location") or {}).get("source") or {})
+    if (src.get("type") or "").lower() == "repository":
+        return True
+    return False
+
+
 def _to_candidate(work: dict) -> Candidate:
     title = (work.get("title") or "").replace("{", "").replace("}", "").strip()
     authors = []
@@ -74,6 +98,7 @@ def _to_candidate(work: dict) -> Candidate:
         doi=doi,
         type=work.get("type") or "",
         url=location.get("landing_page_url") or "",
+        is_preprint=_is_preprint(work),
         raw=work,
     )
 

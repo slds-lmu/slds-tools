@@ -21,7 +21,7 @@ import click
 
 from .bibdb import BibDB
 from .config import ID_FIELD_BY_SOURCE, Member, MemberList, Settings
-from .match import split_review_set
+from .match import dedup_preprint_pairs, split_review_set
 from .review import review_all
 from .sources import openalex
 
@@ -137,22 +137,26 @@ def check(ctx: click.Context, name: str | None, source: str) -> None:
         raise click.ClickException(str(e)) from None
     click.echo(f"SSOT: {settings.ssot_path} ({len(db)} entries)")
     click.echo()
-    grand_total = grand_missing = grand_outdated = 0
+    grand_total = grand_missing = grand_outdated = grand_suppressed = 0
     id_field = ID_FIELD_BY_SOURCE[source]
     for m in members:
         if not getattr(m, id_field):
             click.echo(f"  {m.name:<30}  -- skipped (no {id_field})")
             continue
         cands = openalex.fetch(m, settings)
+        cands, suppressed = dedup_preprint_pairs(cands)
         missing, outdated = split_review_set(cands, db)
-        grand_total += len(cands)
+        grand_total += len(cands) + len(suppressed)
         grand_missing += len(missing)
         grand_outdated += len(outdated)
-        click.echo(f"  {m.name:<30}  {len(cands):>4} candidates  "
-                   f"{len(missing):>4} missing  {len(outdated):>4} outdated")
+        grand_suppressed += len(suppressed)
+        click.echo(f"  {m.name:<30}  {len(cands) + len(suppressed):>4} candidates  "
+                   f"{len(missing):>4} missing  {len(outdated):>4} outdated  "
+                   f"{len(suppressed):>4} preprint-dup")
     click.echo()
     click.echo(f"  {'TOTAL':<30}  {grand_total:>4} candidates  "
-               f"{grand_missing:>4} missing  {grand_outdated:>4} outdated")
+               f"{grand_missing:>4} missing  {grand_outdated:>4} outdated  "
+               f"{grand_suppressed:>4} preprint-dup")
     _warn_id_gaps(all_members)
 
 
