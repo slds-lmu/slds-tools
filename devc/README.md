@@ -6,7 +6,7 @@ Open Cursor attached to a docker dev container for the current project.
 
 - `docker` on PATH.
 - `cursor` CLI on PATH (Cursor → Command Palette → "Install 'cursor' command").
-- Image `ghcr.io/slds-lmu/default:latest` available locally or pullable
+- Image `ghcr.io/slds-lmu/default:latest` available locally or pullable.
 
 ## Usage
 
@@ -29,9 +29,9 @@ devc stop     # stop (and remove) this project's container
 
 ## Lifecycle
 
-The container must be infinitely open for `cursor`.
-So you must run `devc stop` when you are done.
-In-container state (installed packages, shell history) is gone after a stop. 
+Cursor attaches to a running container, so the container must stay up the
+whole time you have a window open. Run `devc stop` when you're done.
+In-container state (installed packages, shell history) is gone after a stop.
 
 To list devc containers across projects: `docker ps --filter name=devc-`.
 

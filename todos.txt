@@ -22,6 +22,7 @@ publs:
 
 sandbox:
 
+- we need to sandbox git commands further
 - we need to check / config how mem works when we are in the sandbox.
 - in README doc the zsh shell BRIEFLY, usage
 - use the posit public PM and ensure binaries are used
