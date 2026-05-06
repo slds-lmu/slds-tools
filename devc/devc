@@ -2,8 +2,10 @@
 # devc — open Cursor attached to a docker dev container for the current project.
 #
 # Subcommands:
-#   cursor  ensure container is running and open a Cursor window at /workspace
-#   stop    stop the project's container (auto-removed via `docker run --rm`)
+#   cursor   ensure container is running and open a Cursor window at /workspace
+#   stop     stop the project's container (auto-removed via `docker run --rm`)
+#   list     show all devc containers across projects (running + any stragglers)
+#   stopall  stop every running devc container
 #
 # Hard-coded image, mode, and bind-mount. Project dir is the enclosing git
 # repo (or $PWD), bind-mounted at /workspace inside the container.
@@ -21,7 +23,7 @@ WORKDIR_IN_CONTAINER="/workspace"
 
 # Print short usage and exit non-zero. Used when args are missing/wrong.
 usage() {
-  echo "usage: devc {cursor|stop}" >&2
+  echo "usage: devc {cursor|stop|list|stopall}" >&2
   exit 2
 }
 
@@ -86,9 +88,29 @@ cmd_stop() {
   fi
 }
 
+# List all devc containers (running and any stragglers). With --rm there
+# normally aren't any stopped ones, but `-a` makes leftovers visible.
+cmd_list() {
+  docker ps -a --filter name=devc-
+}
+
+# Stop every running devc container. `--rm` removes them on stop. No-op
+# (with a friendly message) if nothing is running.
+cmd_stopall() {
+  local ids
+  ids="$(docker ps --filter name=devc- -q)"
+  if [[ -z "$ids" ]]; then
+    echo "no devc containers running"
+    return 0
+  fi
+  docker stop $ids >/dev/null
+}
+
 [[ $# -ge 1 ]] || usage
 case "$1" in
-  cursor) shift; [[ $# -eq 0 ]] || usage; cmd_cursor ;;
-  stop)   shift; [[ $# -eq 0 ]] || usage; cmd_stop ;;
+  cursor)  shift; [[ $# -eq 0 ]] || usage; cmd_cursor ;;
+  stop)    shift; [[ $# -eq 0 ]] || usage; cmd_stop ;;
+  list)    shift; [[ $# -eq 0 ]] || usage; cmd_list ;;
+  stopall) shift; [[ $# -eq 0 ]] || usage; cmd_stopall ;;
   *) usage ;;
 esac

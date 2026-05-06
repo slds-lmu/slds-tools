@@ -11,8 +11,10 @@ Open Cursor attached to a docker dev container for the current project.
 ## Usage
 
 ```sh
-devc cursor   # ensure container is running, open a Cursor window at /workspace
-devc stop     # stop (and remove) this project's container
+devc cursor    # ensure container is running, open a Cursor window at /workspace
+devc stop      # stop (and remove) this project's container
+devc list      # show all devc containers across projects
+devc stopall   # stop every running devc container
 ```
 
 `devc cursor`:
@@ -32,6 +34,4 @@ devc stop     # stop (and remove) this project's container
 Cursor attaches to a running container, so the container must stay up the
 whole time you have a window open. Run `devc stop` when you're done.
 In-container state (installed packages, shell history) is gone after a stop.
-
-To list devc containers across projects: `docker ps --filter name=devc-`.
 
