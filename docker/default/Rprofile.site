@@ -1,0 +1,38 @@
+# Purpose: System-wide R startup script — sets PPM as the default CRAN mirror
+#          and configures HTTPUserAgent so PPM serves pre-compiled noble
+#          binaries instead of source tarballs.
+#
+# Read at every R startup (see ?Rprofile). Therefore an interactive
+# `install.packages("foo")` inside the running container hits PPM by default.
+# The build-time pak install in install_packages.R is unaffected — pak uses
+# its own repo configuration via pak::repo_add() and ignores
+# getOption("repos").
+
+local({
+    repos <- getOption("repos")
+    # PPM (Posit Public Package Manager): pre-compiled noble binaries for the
+    # current R minor. `latest` (vs the date-pinned snapshot used at build
+    # time) because at runtime users typically want current packages, not
+    # whatever was current the day the image was baked.
+    repos["CRAN"] <- "https://packagemanager.posit.co/cran/__linux__/noble/latest"
+    options(repos = repos)
+})
+
+# HTTPUserAgent: PPM serves pre-compiled binaries only when the User-Agent
+# header carries an "R/<ver> R (...)" string identifying the platform; with a
+# generic UA it falls back to source. Format below matches what R itself
+# emits internally when downloading binary builds.
+#
+# download.file.method: pin to libcurl. libcurl reads the HTTPUserAgent
+# option directly. The external "curl" method does NOT — it shells out and
+# system2() splits download.file.extra on whitespace, mangling the
+# `--header "User-Agent: ..."` quoting and silently regressing PPM back to
+# source-tarball downloads. Fixing the method to libcurl avoids the trap.
+options(
+    HTTPUserAgent = sprintf(
+        "R/%s R (%s)",
+        getRversion(),
+        paste(getRversion(), R.version$platform, R.version$arch, R.version$os)
+    ),
+    download.file.method = "libcurl"
+)

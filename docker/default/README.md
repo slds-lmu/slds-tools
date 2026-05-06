@@ -8,7 +8,7 @@ It is multi-arch (`linux/amd64` + `linux/arm64`), so it also runs natively on Ap
 
 - **Base**: Ubuntu 24.04 LTS, locale `en_US.UTF-8`. 
 Default shell is **zsh**.
-- **R** (latest stable from CRAN) with tidyverse, data.table, knitr, devtools, the mlr3 ecosystem (`mlr3verse`, `mlr3learners`, `bbotk`, `mlr3oml`), and the `air` formatter.
+- **R** (latest stable from CRAN) with tidyverse, data.table, knitr, devtools, the mlr3 ecosystem (`mlr3verse`, `mlr3learners`, `bbotk`, `mlr3oml`), and the `air` formatter. `install.packages()` inside the running container is configured to use [Posit Public Package Manager](https://packagemanager.posit.co) (noble binaries) by default.
 - **Python 3.12** (system-wide; `/usr/lib/python3.12/EXTERNALLY-MANAGED` removed so plain `pip install` works) with the standard scientific stack (numpy, pandas, scikit-learn, matplotlib, jupyter), `uv`, and Playwright + Chromium.
 - **LaTeX**: full `texlive-full` distribution plus pandoc, latexmk, biber, qpdf — any CTAN package should just work.
 - **Shell + dev tooling**: git, gh, ripgrep, jq, tmux, htop, GNU parallel, fzf, plus Node.js LTS with the `claude-code` and `codex` CLIs. System headers (cmake, gdal, proj, glpk, eigen, …) included so additional R/Python packages can be source-compiled on top.
@@ -49,6 +49,21 @@ docker run --rm -it ghcr.io/slds-lmu/default:latest
 ```
 
 `--rm` removes the container on exit so stopped containers don't pile up; `-i` keeps STDIN open and `-t` allocates a pseudo-TTY, so together `-it` gives you an interactive shell. With no command appended, the container starts the image's default shell (`zsh`).
+
+### Mount a host directory
+
+To work on files that live on the host, bind-mount the directory into the container with `-v <host>:<container>`. The container's view of `<container>` is the host's `<host>` — edits in either place show up in the other immediately, and anything written under `<container>` survives container removal.
+
+```sh
+# Mount the current directory at /work and start the shell there.
+docker run --rm -it -v "$PWD":/work -w /work ghcr.io/slds-lmu/default:latest
+
+# Mount a specific project directory read-only (e.g. inputs you don't want
+# the container to mutate). Append `:ro` to the volume spec.
+docker run --rm -it -v "$HOME/data/iris":/data:ro ghcr.io/slds-lmu/default:latest
+```
+
+`-w <container>` sets the initial working directory inside the container so you don't have to `cd` after the shell starts. Use absolute paths on the host side — Docker rejects relative paths to `-v`. On macOS / Windows the host path must be inside a directory Docker Desktop is allowed to share (Settings → Resources → File Sharing).
 
 Pulled images live under `/var/lib/docker/` on Linux (inside the Docker Desktop VM on macOS/Windows). 
 Images are quite large — check usage with `docker system df`, 
