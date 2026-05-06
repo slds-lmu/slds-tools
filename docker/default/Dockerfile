@@ -171,65 +171,18 @@ RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
         r-base-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# --- R-package source-compile system deps -----------------------------------
-# PPM's `__linux__/noble/latest` URL serves pre-compiled binaries for most
-# CRAN packages, but FALLS BACK to source tarballs when PPM does not yet
-# have a binary for a specific package@version (typically true for the first
-# few hours/days after a CRAN release). When that happens, R compiles from
-# source in the next layer — and source compiles need the relevant -dev
-# system libraries.
+# --- R packages (CRAN tooling + mlr3 ecosystem, via pak) ----------------------
+# pak resolves and installs binary packages across PPM + r-universe with no
+# source fallback, so any "package missing on Linux noble" condition surfaces
+# as a hard pak error rather than a slow source-compile attempt that may also
+# fail. See install_packages.R for the package list, repository policy, and
+# failure handling.
 #
-# The libs below cover the source-compile system requirements for packages
-# in the SLDS R stack (tidyverse + mlr3) that aren't already covered by the
-# scientific-libs layer above:
-#   libuv1-dev      : required by `fs` (it falls back to source whenever
-#                     PPM lags CRAN; observed failure on fs 2.1.0 build).
-#   libsodium-dev   : required by `sodium` (transitive dep of httr2/oauth flows).
-#   libsecret-1-dev : required by `keyring` (used by gh / git auth helpers).
-#
-# Adding more libs here is the right answer to "package X failed to source-
-# compile because lib Y was missing" — keep it scoped to actual R deps so the
-# image doesn't bloat with every unrelated -dev package.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libuv1-dev \
-        libsodium-dev \
-        libsecret-1-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Core CRAN R packages installed as precompiled binaries via Posit Public
-# Package Manager (PPM). PPM serves binary tarballs at the
-# `__linux__/noble/latest` URL; install.packages downloads them and R
-# CMD INSTALL drops them in without compilation, much faster than the
-# source-compile path. When PPM hasn't yet built a binary for a specific
-# package version, it falls back to source — see the R-package source-compile
-# system deps layer immediately above.
-#
-# Install script lives in install_cran.R (kept out of the Dockerfile so the
-# build works with both BuildKit and the legacy builder — Dockerfile-level
-# heredocs are a BuildKit-only feature). See that file for failure handling
-# and the package list.
-COPY install_cran.R /tmp/install_cran.R
-RUN Rscript /tmp/install_cran.R && rm /tmp/install_cran.R
-
-# --- mlr3 ecosystem (via pak) -------------------------------------------------
-# pak resolves and installs binary packages across PPM + r-universe.
-#
-# Repository policy:
-#   - PPM (Posit Public Package Manager): primary CRAN mirror, serves
-#     pre-compiled binaries for noble at the `__linux__/noble/latest` URL.
-#   - mlr-org.r-universe.dev: r-universe binaries for the latest mlr3
-#     development releases (often ahead of CRAN).
-#   - community.r-multiverse.org: r-universe binaries for community packages
-#     not yet (or never) on CRAN.
-# We deliberately do NOT add a source-only fallback like cloud.r-project.org —
-# all three repos serve binaries, so pak resolves only binary candidates and
-# any "package missing on Linux noble" condition surfaces as a hard pak
-# error rather than a slow source-compile attempt that may also fail.
-#
-# Install script lives in install_mlr3.R; see that file for repository
-# policy and failure handling.
-COPY install_mlr3.R /tmp/install_mlr3.R
-RUN Rscript /tmp/install_mlr3.R && rm /tmp/install_mlr3.R
+# Install script lives in install_packages.R (kept out of the Dockerfile so
+# the build works with both BuildKit and the legacy builder — Dockerfile-level
+# heredocs are a BuildKit-only feature).
+COPY install_packages.R /tmp/install_packages.R
+RUN Rscript /tmp/install_packages.R && rm /tmp/install_packages.R
 
 # --- Python (3.12 from Ubuntu 24.04) -----------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \

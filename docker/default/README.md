@@ -25,9 +25,11 @@ ghcr.io/slds-lmu/default:YYYY-MM-DD     # human-readable snapshot
 
 Old images are never auto-deleted — previous `<git-sha>` and date tags remain pullable indefinitely.
 
-## Versioning policy (read this if you base a paper on this image)
+## Versioning policy 
 
-`:latest` has floating versions: each rebuild may pick up a newer R, newer CRAN/PyPI packages, or new system libs. Use it for teaching, scripting, and throwaway work.
+`:latest` has floating versions: each rebuild may pick up a newer R, newer Python packages, or new system libs. 
+R packages from CRAN are date-pinned to a PPM snapshot. The weekly cron auto-bumps that date.
+Use `:latest` for teaching, scripting, and throwaway work.
 
 For anything that has to reproduce later — papers, benchmarks, archived experiments — pin to an immutable reference in your repo's `Dockerfile`:
 
@@ -159,9 +161,5 @@ CMD ["Rscript", "run_experiments.R"]
 ```
 
 That pin will resolve to *exactly* the same bytes today, in three years, on any machine — independent of what `:latest` is doing.
-
-## Files
-
-- [`Dockerfile`](./Dockerfile) — image definition.
 
 

@@ -6,6 +6,9 @@ general:
 - in wintermute doc how claude actually works. memomry. projects.
   rules and agents files. hotkeys. how to setup claude with user prefs that i like.
 - configure claude globally how i like it --> dotfiles
+- wire something so we can work on the website
+- very annoyng that claude often writes rules into mem when they should 
+  go into the repo rules file. make him ask about this!
 
 
 publs:
@@ -14,6 +17,7 @@ publs:
   we should inititally check all other files, and only add in bibs which make sense
 - README needs to be completely rehauled to become user docs
 - check if we really need config.yaml and all its entries
+- we need to check what we do with the tags and the subgroups. this might fuck stuff up
 
 sandbox:
 

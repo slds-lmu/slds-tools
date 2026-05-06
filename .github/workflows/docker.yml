@@ -13,7 +13,7 @@
 #   - push to main with docker/default/** or workflow change   -> build + push
 #   - pull_request to main with the same path filter           -> build only
 #   - manual dispatch                                          -> build + push
-#   - weekly cron (Sunday 03:00 UTC)                           -> build + push
+#   - weekly cron (Sunday 03:00 UTC)                           -> bump PPM date + build + push + commit bump
 #
 # Tags pushed per build (must stay in sync with docker/default/README.md):
 #   :latest         - moves with every build (default-branch only)
@@ -52,7 +52,12 @@ on:
   workflow_dispatch:
 
   # Weekly rebuild so upstream apt/CRAN/PyPI/npm updates flow into :latest
-  # without anyone needing to push a no-op commit.
+  # without anyone needing to push a no-op commit. The cron also bumps the
+  # PPM R-package date pin to T-7 days (see the `prepare` and `commit-bump`
+  # jobs) and commits the bump back to main, so the source repo always
+  # reflects the date the published image was built against. Manual dispatch
+  # and `push` events do NOT bump — they build against whatever is committed
+  # in install_packages.R right now.
   schedule:
     - cron: "0 3 * * 0"  # Sunday 03:00 UTC
 
@@ -70,12 +75,37 @@ env:
 
 jobs:
   # -----------------------------------------------------------------------
+  # Job 0: On a `schedule` event, compute the PPM date pin (T-7 days) once
+  # and emit it as a job output, so both matrix legs of `build` and the
+  # final `commit-bump` job all pin to exactly the same date. T-7 is well
+  # past PPM's binary-publication lag, so the snapshot is guaranteed to be
+  # complete; the build hard-fails if it isn't (no source fallback).
+  #
+  # On non-schedule events the step is skipped and the output is empty —
+  # consumers gate on `github.event_name == 'schedule'`.
+  # -----------------------------------------------------------------------
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    outputs:
+      ppm_date: ${{ steps.compute.outputs.ppm_date }}
+    steps:
+      - name: Compute PPM date pin (T-7 days, schedule only)
+        id: compute
+        if: github.event_name == 'schedule'
+        run: |
+          date=$(date -u -d '7 days ago' +%Y-%m-%d)
+          echo "ppm_date=$date" >> "$GITHUB_OUTPUT"
+          echo "Will pin PPM to noble/$date"
+
+  # -----------------------------------------------------------------------
   # Job 1: Build per-arch on the matching native runner. Each matrix leg
   # pushes the resulting image *by digest only* (no tag) and uploads its
   # digest as an artifact for the merge job to pick up.
   # -----------------------------------------------------------------------
   build:
     name: Build ${{ matrix.platform }}
+    needs: prepare
     # Run on the runner that natively matches the target platform — no QEMU.
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -101,6 +131,27 @@ jobs:
       # as the build context.
       - name: Check out repository
         uses: actions/checkout@v4
+
+      # On scheduled (weekly) builds, bump the PPM date pin in install_packages.R
+      # to the T-7 date computed by the `prepare` job, BEFORE the docker build
+      # consumes the file. The bump is then committed back to main by the
+      # `commit-bump` job after build/merge succeed (see job at bottom).
+      #
+      # Hard-fails if the URL pattern can't be matched — e.g. install_packages.R
+      # was restructured and the regex below no longer applies — so the cron
+      # never silently skips the bump.
+      - name: Bump PPM date pin in install_packages.R (schedule only)
+        if: github.event_name == 'schedule'
+        run: |
+          target="docker/default/install_packages.R"
+          new="${{ needs.prepare.outputs.ppm_date }}"
+          if ! grep -qE "noble/[0-9]{4}-[0-9]{2}-[0-9]{2}" "$target"; then
+            echo "ERROR: no PPM date line of form noble/YYYY-MM-DD in $target" >&2
+            exit 1
+          fi
+          sed -i -E "s|noble/[0-9]{4}-[0-9]{2}-[0-9]{2}|noble/${new}|" "$target"
+          echo "Pinned PPM to noble/${new}:"
+          grep -E "noble/[0-9]{4}-[0-9]{2}-[0-9]{2}" "$target"
 
       # Default runners have ~25 GB free; this image is ~8 GB and the build
       # context plus apt downloads push us close to the limit.
@@ -234,3 +285,54 @@ jobs:
         run: |
           echo "Pushed (multi-arch manifest):"
           echo "${{ steps.meta.outputs.tags }}"
+
+  # -----------------------------------------------------------------------
+  # Job 3: On a `schedule` event only, after the build + merge have succeeded
+  # and the image is published, commit the same PPM date bump that the build
+  # used back to main. This keeps install_packages.R at HEAD a faithful
+  # description of what `:latest` (and the matching `:<sha>` / `:YYYY-MM-DD`
+  # tags) was actually built from.
+  #
+  # `[skip ci]` in the commit message prevents the resulting push event from
+  # re-triggering this same workflow.
+  #
+  # Hard-fails if any of:
+  #   - the URL pattern can't be matched (install_packages.R restructured)
+  #   - branch protection on main blocks the bot push
+  #   - somebody pushed a non-ff commit between checkout and push
+  # i.e. the date pin in main can drift out of sync only by an explicit
+  # human commit, never silently from a half-completed cron.
+  # -----------------------------------------------------------------------
+  commit-bump:
+    name: Commit PPM date bump
+    if: github.event_name == 'schedule'
+    needs: [prepare, merge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write    # job-scoped override of the top-level read-only token
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # Default GITHUB_TOKEN; the job-level `contents: write` above
+          # gives it push rights for the duration of this job.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply and commit PPM date bump
+        run: |
+          target="docker/default/install_packages.R"
+          new="${{ needs.prepare.outputs.ppm_date }}"
+          if ! grep -qE "noble/[0-9]{4}-[0-9]{2}-[0-9]{2}" "$target"; then
+            echo "ERROR: no PPM date line of form noble/YYYY-MM-DD in $target" >&2
+            exit 1
+          fi
+          sed -i -E "s|noble/[0-9]{4}-[0-9]{2}-[0-9]{2}|noble/${new}|" "$target"
+          if git diff --quiet "$target"; then
+            echo "No change — install_packages.R already pinned to noble/${new}"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add "$target"
+          git commit -m "chore(docker): bump PPM date pin to ${new} [skip ci]"
+          git push
