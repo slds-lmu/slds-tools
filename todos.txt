@@ -46,3 +46,6 @@ sandbox:
 
 devc
 - needs to be on PATH --> dotfiles?
+- doc that we need the extension in cursor
+- we need to make claude login
+- we kind also need to mount claude skills and global clode config in the container? and mem?
