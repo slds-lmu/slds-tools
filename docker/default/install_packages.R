@@ -31,7 +31,7 @@ install.packages(
     )
 )
 pak::repo_add(
-    PPM          = "https://packagemanager.posit.co/cran/__linux__/noble/2026-05-05",
+    PPM          = "https://packagemanager.posit.co/cran/__linux__/noble/2026-05-10",
     mlr3universe = "https://mlr-org.r-universe.dev",
     multiverse   = "https://community.r-multiverse.org"
 )
