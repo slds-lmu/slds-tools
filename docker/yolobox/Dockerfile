@@ -1,4 +1,4 @@
-FROM ghcr.io/finbarr/yolobox:buildcache
+FROM ghcr.io/finbarr/yolobox:latest
 
 # Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
