@@ -1,5 +1,9 @@
 FROM ghcr.io/finbarr/yolobox:latest
 
+# Upstream image runs as the unprivileged `yolo` user; switch to root for the
+# apt / pip / R installs below. Restore the default user at the end.
+USER root
+
 # Install system packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Locale data (en_US.UTF-8 generated below; LANG/LC_ALL stay C.UTF-8)
@@ -87,3 +91,8 @@ RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-ins
     && mv /root/.local/bin/air /usr/local/bin/air \
     && rm -rf /root/.local /root/.config/air \
     && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
+
+# Restore the unprivileged default user from the upstream image so containers
+# launched from this image keep dropping privileges by default.
+USER yolo
+WORKDIR /home/yolo
