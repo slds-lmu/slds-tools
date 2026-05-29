@@ -68,16 +68,18 @@ RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
 COPY install_packages.R /tmp/install_packages.R
 RUN Rscript /tmp/install_packages.R && rm /tmp/install_packages.R
 
-# Python ML stack (from slds-tools). Ubuntu 24.04 ships a PEP 668 marker that
+# Python stack (from slds-tools). Ubuntu 24.04 ships a PEP 668 marker that
 # blocks system-wide `pip install` outside a venv; we remove it because this
 # is a single-purpose container that doesn't need PEP 668's host protection.
+# copier is a project/template scaffolding CLI.
 RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED \
     && pip install --no-cache-dir \
         numpy \
         pandas \
         scikit-learn \
         matplotlib \
-        jupyter
+        jupyter \
+        copier
 
 # Playwright + Chromium (from slds-tools). --with-deps invokes apt to install
 # the OS-level libraries Chromium needs to run headless.
