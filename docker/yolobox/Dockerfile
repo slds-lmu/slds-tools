@@ -120,7 +120,6 @@ RUN curl -fsSL https://starship.rs/install.sh \
 # yolo:yolo so the user can edit them at runtime.
 COPY --chown=yolo:yolo zshrc        /home/yolo/.zshrc
 COPY --chown=yolo:yolo zsh_aliases  /home/yolo/.zsh_aliases
-COPY --chown=yolo:yolo tmux.conf    /home/yolo/.tmux.conf
 COPY                  starship-extra.toml /tmp/starship-extra.toml
 RUN install -d -o yolo -g yolo /home/yolo/.config \
     && starship preset plain-text-symbols -o /tmp/starship-base.toml \
