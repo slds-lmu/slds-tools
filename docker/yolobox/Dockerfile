@@ -49,6 +49,7 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
         pandoc \
         tidy \
         qpdf \
+        poppler-utils \
         lmodern \
         texlive-full \
     && rm -rf /var/lib/apt/lists/*
