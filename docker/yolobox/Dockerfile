@@ -146,6 +146,15 @@ RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-ins
     && rm -rf /root/.local /root/.config/air \
     && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
 
+# Claude Code (Anthropic's CLI, `claude`). Upstream yolobox ships a version,
+# but we re-install `@latest` here so every rebuild of this image picks up the
+# current release rather than whatever upstream happened to bundle. `npm -g`
+# overwrites the upstream-shipped copy in place. Distributed via npm; nodejs
+# and npm come from the upstream base image, so no extra runtime is needed.
+# The `gccm-gen` alias in zsh_aliases depends on `claude -p` being on PATH.
+RUN npm install -g @anthropic-ai/claude-code@latest \
+    && npm cache clean --force
+
 # Interactive shell setup: zsh + plugins + starship prompt.
 # The upstream yolobox base ships fzf but its
 # shell-integration scripts under /usr/share/doc/fzf/examples/ are stripped by
