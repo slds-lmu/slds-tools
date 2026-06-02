@@ -161,6 +161,19 @@ jobs:
           sudo apt-get clean
           df -h /
 
+      # Docker Hub anonymous pulls are rate-limited per runner egress IP and
+      # occasionally just hang, which makes `setup-buildx-action` flake when
+      # it pulls moby/buildkit:buildx-stable-1. Pre-pull with retries so the
+      # image is in the local daemon by the time setup-buildx runs (it then
+      # skips its own pull).
+      - name: Pre-pull buildkit image (retry around Docker Hub flakiness)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 3
+          max_attempts: 5
+          retry_wait_seconds: 20
+          command: docker pull moby/buildkit:buildx-stable-1
+
       # Required for GHA layer caching (`type=gha`) and for build-push-action.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -236,6 +249,17 @@ jobs:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
+
+      # Same Docker Hub flake guard as in the build job — pre-pull buildkit
+      # with retries so setup-buildx-action finds it locally and doesn't
+      # bootstrap-fail on a transient registry timeout.
+      - name: Pre-pull buildkit image (retry around Docker Hub flakiness)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 3
+          max_attempts: 5
+          retry_wait_seconds: 20
+          command: docker pull moby/buildkit:buildx-stable-1
 
       # buildx is needed for `imagetools create`, which builds the manifest.
       - name: Set up Docker Buildx
