@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # Default zshrc shipped in the slds-tools yolobox image.
 # Ported from sysadmin/stow/shell/.zshrc, trimmed to what works inside the
-# container (no zoxide / cargo / wl-clipboard / host-specific PATH bits).
+# container (no cargo / wl-clipboard / host-specific PATH bits).
 # -----------------------------------------------------------------------------
 
 # ---- non-interactive guard ----
@@ -91,6 +91,12 @@ export PATH
 # zle widgets — keep it at the bottom.
 [[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] \
   && source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# ---- zoxide ----
+# Smart `cd` replacement: `z foo` jumps to the most-frecently-used dir matching
+# "foo"; `zi foo` opens an interactive fzf picker. Installs the `z` / `zi`
+# widgets but no zle bindings, so order vs. syntax-highlighting doesn't matter.
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
 
 # ---- starship prompt ----
 # Cross-shell prompt. Config at ~/.config/starship.toml combines the

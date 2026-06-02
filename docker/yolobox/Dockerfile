@@ -4,18 +4,73 @@ FROM ghcr.io/finbarr/yolobox:latest
 # apt / pip / R installs below. Restore the default user at the end.
 USER root
 
-# Install system packages
+# Install system packages.
+#
+# NOTE on what NOT to (re-)install here: the upstream ghcr.io/finbarr/yolobox
+# already ships a baseline of dev tooling, including:
+#   bat, build-essential, cmake, eza, fd-find, fzf, gh, git, gnupg, htop, jq,
+#   less, nano, nodejs (+ npm), openssh-client, ripgrep, rsync, sudo, tree,
+#   unzip, vim, zip.
+# We intentionally do NOT re-list those — apt would no-op, but listing them
+# would falsely imply ownership and bloat the diff against upstream. Anything
+# below is either missing from upstream or something we want to pin/own here.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Locale data (en_US.UTF-8 generated below; LANG/LC_ALL stay C.UTF-8)
     locales \
     # Extra shell utilities
     procps \
-    man-db \
     aggregate \
     tmux \
     parallel \
     bc \
+    # ---- shell dev / testing ----
+    # bats: Bash Automated Testing System — TAP-style test runner. /usr/bin/bats.
+    bats \
+    # shellcheck: static analysis for shell scripts (pairs with bats).
+    shellcheck \
+    # ---- archive / transfer / extraction ----
+    # xz-utils: .xz / .lzma support (tar -J).
+    xz-utils \
+    # dtrx: "do the right extraction" — one command for any archive format.
+    dtrx \
+    # ---- inspection / DB / diagrams ----
+    # sqlite3: lightweight DB CLI for inspection.
+    sqlite3 \
+    # graphviz: dot/neato — used by R/Python doc pipelines (DiagrammeR, etc.).
+    graphviz \
+    # ---- git ergonomics ----
+    # git-lfs: large-file storage support for git (needed by some repos).
+    git-lfs \
+    # git-delta: side-by-side syntax-highlighted pager for git diff / log / show.
+    # Wired in /etc/gitconfig below so all users get it without per-user setup.
+    git-delta \
+    # ---- modern CLI ergonomics ----
+    # zoxide: smart `cd` replacement. Shell integration added in zshrc.
+    zoxide \
+    # tealdeer: fast Rust client for tldr-pages (three-line CLI summaries).
+    # First run: `tldr -u` to fetch the page cache.
+    tealdeer \
+    # hyperfine: command-line benchmarking with warmups and statistics.
+    hyperfine \
+    # glow: render Markdown in the terminal (`glow file.md`).
+    glow \
+    # ---- C/C++ scientific dev kit ----
+    # build-essential + cmake come from upstream. We add the analysis / debug
+    # tooling that's typically needed for native R/Python extension work.
+    clang \
+    clangd \
+    clang-tidy \
+    ccache \
+    gdb \
+    valgrind \
+    cppcheck \
     && locale-gen en_US.UTF-8 \
+    # Symlinks for Ubuntu's renamed binaries so the canonical names work:
+    #   /usr/bin/fdfind  (fd-find package) -> fd
+    #   /usr/bin/batcat  (bat package)     -> bat
+    # `ln -sf` is idempotent in case upstream ever adds these symlinks.
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,7 +109,7 @@ RUN echo 'Acquire::Retries "5";' > /etc/apt/apt.conf.d/80-retries \
         texlive-full \
     && rm -rf /var/lib/apt/lists/*
 
-# CRAN apt repo + R (from slds-tools). Provides current R instead of Ubuntu's stock.
+# CRAN apt repo + R. Provides current R instead of Ubuntu's stock r-base.
 RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
         | tee /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc > /dev/null \
     && echo "deb https://cloud.r-project.org/bin/linux/ubuntu noble-cran40/" \
@@ -91,7 +146,7 @@ RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-ins
     && rm -rf /root/.local /root/.config/air \
     && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
 
-# Interactive shell setup: zsh + plugins + starship prompt. 
+# Interactive shell setup: zsh + plugins + starship prompt.
 # The upstream yolobox base ships fzf but its
 # shell-integration scripts under /usr/share/doc/fzf/examples/ are stripped by
 # Ubuntu's dpkg.cfg.d/excludes (path-exclude=/usr/share/doc/*). We add a
@@ -112,13 +167,30 @@ RUN echo 'path-include=/usr/share/doc/fzf/examples/*' \
 RUN curl -fsSL https://starship.rs/install.sh \
         | sh -s -- --yes --bin-dir /usr/local/bin
 
-# Ship dotfiles for the unprivileged `yolo` user. 
+# yq: YAML/JSON/XML processor (mikefarah/yq, Go binary). Not in Ubuntu apt,
+# so we fetch the latest release directly into /usr/local/bin.
+RUN curl -fsSL -o /usr/local/bin/yq \
+        https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+    && chmod +x /usr/local/bin/yq
+
+# git-delta wiring: configure /etc/gitconfig so every user (root + yolo) gets
+# delta as the pager for `git diff` / `git log -p` / `git show` out of the box,
+# with no per-user dotfile copy needed. Users can still override in ~/.gitconfig.
+RUN git config --system core.pager delta \
+    && git config --system interactive.diffFilter "delta --color-only" \
+    && git config --system delta.navigate true \
+    && git config --system delta.light false \
+    && git config --system merge.conflictStyle zdiff3
+
+# Ship dotfiles for the unprivileged `yolo` user.
 #   .zshrc        — interactive shell behavior, plugin wiring, prompt init
 #   .zsh_aliases  — sourced by .zshrc; ls/grep colors, R alias, gccm helpers
 # The starship config is composed at build time: the plain-text-symbols preset
 # (so no Nerd Font is required) is concatenated with starship-extra.toml (the
 # user's format / directory / cmd_duration overrides). All files are owned by
 # yolo:yolo so the user can edit them at runtime.
+# Also drop ~/.parallel/will-cite so GNU parallel skips its first-run citation
+# nag for non-interactive scripts (`parallel --citation` accepts the same thing).
 COPY --chown=yolo:yolo zshrc        /home/yolo/.zshrc
 COPY --chown=yolo:yolo zsh_aliases  /home/yolo/.zsh_aliases
 COPY                  starship-extra.toml /tmp/starship-extra.toml
@@ -128,6 +200,9 @@ RUN install -d -o yolo -g yolo /home/yolo/.config \
         > /home/yolo/.config/starship.toml \
     && chown yolo:yolo /home/yolo/.config/starship.toml \
     && rm /tmp/starship-base.toml /tmp/starship-extra.toml \
+    && install -d -o yolo -g yolo /home/yolo/.parallel \
+    && touch /home/yolo/.parallel/will-cite \
+    && chown yolo:yolo /home/yolo/.parallel/will-cite \
     && chsh -s /bin/zsh yolo
 
 # SHELL=/bin/zsh exposes the chosen interactive shell to subprocesses (tmux,
