@@ -52,8 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tealdeer \
     # hyperfine: command-line benchmarking with warmups and statistics.
     hyperfine \
-    # glow: render Markdown in the terminal (`glow file.md`).
-    glow \
+    # NOTE: glow is NOT in Ubuntu 24.04 noble's repos (added in 25.04). It is
+    # installed from Charm's official apt repo in a later RUN block.
     # ---- C/C++ scientific dev kit ----
     # build-essential + cmake come from upstream. We add the analysis / debug
     # tooling that's typically needed for native R/Python extension work.
@@ -172,6 +172,19 @@ RUN curl -fsSL https://starship.rs/install.sh \
 RUN curl -fsSL -o /usr/local/bin/yq \
         https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
     && chmod +x /usr/local/bin/yq
+
+# glow: Charm.sh terminal Markdown renderer. Not in Ubuntu 24.04 noble repos
+# (lands in 25.04+), so we use Charm's official apt repo. The key is scoped
+# via [signed-by=...] so it only authenticates packages from repo.charm.sh
+# (modern apt practice; doesn't globally trust the Charm key for other repos).
+RUN install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://repo.charm.sh/apt/gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/charm.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
+        > /etc/apt/sources.list.d/charm.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends glow \
+    && rm -rf /var/lib/apt/lists/*
 
 # git-delta wiring: configure /etc/gitconfig so every user (root + yolo) gets
 # delta as the pager for `git diff` / `git log -p` / `git show` out of the box,
