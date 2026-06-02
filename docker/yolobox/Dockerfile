@@ -146,14 +146,35 @@ RUN curl -LsSf https://github.com/posit-dev/air/releases/latest/download/air-ins
     && rm -rf /root/.local /root/.config/air \
     && sed -i '/\.local\/bin\/env/d' /root/.zshrc /root/.bashrc /root/.profile 2>/dev/null || true
 
-# Claude Code (Anthropic's CLI, `claude`). Upstream yolobox ships a version,
-# but we re-install `@latest` here so every rebuild of this image picks up the
-# current release rather than whatever upstream happened to bundle. `npm -g`
-# overwrites the upstream-shipped copy in place. Distributed via npm; nodejs
-# and npm come from the upstream base image, so no extra runtime is needed.
+# Claude Code (Anthropic's CLI, `claude`). Re-install `@latest` so every rebuild
+# of this image picks up the current release rather than whatever upstream
+# bundled.
+#
+# Upstream layout we must work around:
+#   /usr/local/bin/claude          — a ~245 MB self-contained native binary
+#   /opt/yolobox/bin/claude        — wrapper that strips itself from PATH then
+#                                    re-runs `which claude` (i.e. resolves
+#                                    against the rest of PATH) and execs with
+#                                    --dangerously-skip-permissions.
+#   /home/yolo/.local/bin/claude   — symlink -> /usr/local/bin/claude
+#
+# The wrapper's `which claude` hits /home/yolo/.local/bin/claude first, which
+# points at /usr/local/bin/claude — so to override claude we MUST replace that
+# specific file. A plain `npm install -g` as root goes to root's npm prefix
+# (`/usr`, giving /usr/bin/claude) and is shadowed by the symlink; hence the
+# explicit `--prefix=/usr/local`. We remove the upstream native binary first
+# so npm's small JS shim can take its place at /usr/local/bin/claude.
+#
+# CLAUDE_CACHE_BUST: Docker caches RUN lines by literal text, so without a
+# cache-busting arg the `@latest` resolves once and then sticks forever. Bump
+# this (or pass `--build-arg CLAUDE_CACHE_BUST=$(date +%s)`) to force re-pull.
+#
 # The `gccm-gen` alias in zsh_aliases depends on `claude -p` being on PATH.
-RUN npm install -g @anthropic-ai/claude-code@latest \
-    && npm cache clean --force
+ARG CLAUDE_CACHE_BUST=1
+RUN rm -f /usr/local/bin/claude \
+    && npm install -g --prefix=/usr/local @anthropic-ai/claude-code@latest \
+    && npm cache clean --force \
+    && /usr/local/bin/claude --version
 
 # Interactive shell setup: zsh + plugins + starship prompt.
 # The upstream yolobox base ships fzf but its
