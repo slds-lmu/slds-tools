@@ -92,12 +92,10 @@ The Dockerfile is organized into commented `RUN` blocks. In order:
 
 ## R packages — repository policy and date pin
 
-R packages are installed by **`install_packages.R`** using `pak`, resolving binary
-packages from a **single repo**:
-
-- **PPM** (Posit Public Package Manager) — a CRAN mirror serving pre-compiled
-  noble binaries from a **date-pinned snapshot**. The pinned date is the
-  `noble/<DATE>` line in `install_packages.R` (the single source of truth).
+We ship a dedicated small satck or R packages, 
+installed by **`install_packages.R`** using `pak` and PPM,
+using pre-compiled noble binaries from a **date-pinned snapshot**. 
+The pinned date is the  `noble/<DATE>` line in `install_packages.R`.
 
 ### Bumping the R snapshot date
 
@@ -106,9 +104,14 @@ line in `install_packages.R` to T-7 days, rebuilds no-cache, and commits the
 change back to `main` (see the workflow section above). To bump out of cycle,
 edit that line yourself and rebuild.
 
-## Python packages
+## Python and Python packages
 
-The image **does not ship a global scientific Python stack.** . 
+**Python version.** We don't install Python ourselves: the system interpreter is
+whatever Ubuntu noble ships (currently **3.12**), inherited from the base image.
+Projects that need a specific (or newer) version pick
+it per-project with `uv` (`uv venv --python <X>`, `.python-version`).
+
+The image **does not ship a global scientific Python stack.**
 Instead, projects create their own pinned environments — a per-project `uv` venv, or a `.yolobox`
 Dockerfile fragment (see *Per-project customization* below).
 
