@@ -1,3 +1,6 @@
+investigate the .yolobox/tmp staging dir. maybe we should del this when the container starts?
+problem with multiple parallel containers?
+
 
 general:
 - clean up the slds-website repo. it has issues and PRs

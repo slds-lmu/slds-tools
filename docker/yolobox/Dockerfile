@@ -176,16 +176,22 @@ RUN rm -f /usr/local/bin/claude \
     && npm cache clean --force \
     && /usr/local/bin/claude --version
 
-# Plugin copy-in shim. We replace the npm `claude` launcher symlink at
-# /usr/local/bin/claude with a wrapper that, on first launch, copies the
-# host's plugin dir (bind-mounted READ-ONLY at /host-claude-plugins by the
-# yolobox config) into the container-writable ~/.claude/plugins and rewrites
-# the host paths the plugin registry embeds. This lets us drop the former
-# read-write plugin mount, which let in-sandbox code plant files the host's
-# Claude Code would later execute (persistent host RCE). The shim execs the
-# real binary (claude.exe) by absolute path, so the upstream
+# Claude launch shim. We replace the npm `claude` launcher at
+# /usr/local/bin/claude with a wrapper that runs once before the real binary,
+# after the yolobox entrypoint snapshot but before Claude reads anything.
+# Under claude_config=true the entrypoint snapshots host ~/.claude in one-way
+# (dead copy). The shim does two fixups on top:
+#   1. Rewrites the plugin registry's absolute host paths to the container home
+#      (cp copies them verbatim, so plugins would otherwise fail to load).
+#   2. Bridges the dirs we want LIVE by symlinking them to rw host mounts staged
+#      at /host-claude-* (outside ~/.claude, so the entrypoint's `rm -rf` can't
+#      clobber the host data): ~/.claude/projects (sessions + per-project
+#      memory) and ~/.claude/history.jsonl (prompt history).
+# Credentials are NOT bridged — the snapshot copy is enough.
+# The shim execs the real binary (claude.exe) by absolute path, so the upstream
 # /opt/yolobox/bin/claude wrapper still resolves `which claude` here without
-# recursion. See claude-launch-shim.sh and slds-tools/yb_plugins.md.
+# recursion. The rw mounts themselves come from the sysadmin config.toml
+# `mounts` list; see claude-launch-shim.sh for the expected mount paths.
 COPY claude-launch-shim.sh /usr/local/bin/claude
 RUN chmod 0755 /usr/local/bin/claude
 
