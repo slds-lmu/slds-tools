@@ -8,12 +8,20 @@
 #     pre-compiled noble binaries from a date-pinned snapshot (not `latest`).
 #     Bump the date below to pick up newer R packages; see README for the
 #     full rationale and bump procedure.
-# Every package we install (incl. the mlr3 ecosystem) is on CRAN, so PPM alone
-# covers the list. We deliberately do NOT add r-universe (dev mlr3) or a
-# source-only fallback like cloud.r-project.org: r-universe has no date pin and
-# would float the build out of reproducibility, and a single date-pinned binary
-# repo means any "package missing on Linux noble" condition surfaces as a hard
-# pak error rather than a slow source-compile attempt that may also fail.
+# We install HARD dependencies only (Depends / Imports / LinkingTo), via
+# dependencies = NA below — NOT Suggests. Reason: every hard dependency of the
+# list is on CRAN and therefore in PPM, but some *Suggests* are not. Notably
+# several mlr3 packages suggest mlr3proba, which was removed from CRAN and now
+# lives only on the (un-date-pinned) mlr-org r-universe; installing Suggests
+# (dependencies = TRUE) drags mlr3proba into the solve and makes the whole
+# PPM-only resolution fail. To bake in a specific suggested extra that *is* on
+# PPM, add it explicitly to `pkgs` below rather than enabling all Suggests.
+#
+# We deliberately do NOT add r-universe (dev mlr3) or a source-only fallback like
+# cloud.r-project.org: r-universe has no date pin and would float the build out of
+# reproducibility, and a single date-pinned binary repo means any "package missing
+# on Linux noble" condition surfaces as a hard pak error rather than a slow
+# source-compile attempt that may also fail.
 #
 # Failure handling: pak::pak() raises a hard error (non-zero R exit) on
 # resolution / install failure, but we still post-check installed.packages()
@@ -39,12 +47,27 @@ pkgs <- c(
     "knitr",        # knitr: dynamic report generation (Rnw / Rmd weaving)
     "devtools",     # devtools: package-development helpers (install_github, document, check)
     # --- mlr3 ecosystem ---
-    "mlr3verse",    # mlr3verse: meta-pkg pulling mlr3 + pipelines + tuning + viz
-    "bbotk",        # bbotk: black-box optimization toolkit, optimizer foundation under mlr3tuning
-    "mlr3oml",      # mlr3oml: OpenML integration (fetch tasks/datasets from openml.org)
-    "mlr3learners"  # mlr3learners: extra learners (xgboost, ranger, glmnet, lightgbm, ...)
+    "mlr3",            # mlr3: core machine-learning framework (tasks, learners, resampling)
+    "mlr3misc",        # mlr3misc: internal helper functions shared across the ecosystem
+    "paradox",         # paradox: parameter spaces / hyperparameter definitions
+    "mlr3data",        # mlr3data: example datasets and tasks
+    "mlr3cluster",     # mlr3cluster: clustering learners and tasks
+    "mlr3filters",     # mlr3filters: feature-filter methods for feature selection
+    "mlr3fselect",     # mlr3fselect: wrapper feature selection
+    "mlr3hyperband",   # mlr3hyperband: Hyperband / successive-halving tuners
+    "mlr3inferr",      # mlr3inferr: inference on generalization error
+    "mlr3learners",    # mlr3learners: extra learners (xgboost, ranger, glmnet, lightgbm, ...)
+    "mlr3mbo",         # mlr3mbo: model-based (Bayesian) optimization
+    "mlr3pipelines",   # mlr3pipelines: ML pipelines / preprocessing graphs
+    "mlr3tuning",      # mlr3tuning: hyperparameter tuning
+    "mlr3tuningspaces",# mlr3tuningspaces: predefined tuning search spaces
+    "mlr3viz",         # mlr3viz: autoplot visualizations for mlr3 objects
+    "bbotk",           # bbotk: black-box optimization toolkit (optimizer foundation under mlr3tuning)
+    "mlr3oml"          # mlr3oml: OpenML integration (fetch tasks/datasets from openml.org)
 )
-pak::pak(pkgs, dependencies = TRUE, ask = FALSE)
+# dependencies = NA -> hard deps only (Depends/Imports/LinkingTo), no Suggests.
+# See the repository-policy note above for why Suggests are excluded.
+pak::pak(pkgs, dependencies = NA, ask = FALSE)
 missing <- setdiff(pkgs, rownames(installed.packages()))
 if (length(missing)) {
     stop("pak::pak() failed for: ", paste(missing, collapse = ", "), call. = FALSE)
