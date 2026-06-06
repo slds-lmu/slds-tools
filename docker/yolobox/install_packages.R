@@ -1,21 +1,19 @@
 # Install the R packages baked into the slds-tools default image.
 # Run from the Dockerfile via `Rscript install_packages.R`.
 #
-# Uses pak to resolve and install binary packages across PPM + r-universe.
+# Uses pak to resolve and install binary packages from PPM only.
 #
 # Repository policy:
-#   - PPM (Posit Public Package Manager): primary CRAN mirror, serving
+#   - PPM (Posit Public Package Manager) is the SOLE repo: a CRAN mirror serving
 #     pre-compiled noble binaries from a date-pinned snapshot (not `latest`).
 #     Bump the date below to pick up newer R packages; see README for the
 #     full rationale and bump procedure.
-#   - mlr-org.r-universe.dev: r-universe binaries for the latest mlr3
-#     development releases (often ahead of CRAN). No date pin available.
-#   - community.r-multiverse.org: r-universe binaries for community packages
-#     not yet (or never) on CRAN. No date pin available.
-# We deliberately do NOT add a source-only fallback like cloud.r-project.org —
-# all three repos serve binaries, so pak resolves only binary candidates and
-# any "package missing on Linux noble" condition surfaces as a hard pak error
-# rather than a slow source-compile attempt that may also fail.
+# Every package we install (incl. the mlr3 ecosystem) is on CRAN, so PPM alone
+# covers the list. We deliberately do NOT add r-universe (dev mlr3) or a
+# source-only fallback like cloud.r-project.org: r-universe has no date pin and
+# would float the build out of reproducibility, and a single date-pinned binary
+# repo means any "package missing on Linux noble" condition surfaces as a hard
+# pak error rather than a slow source-compile attempt that may also fail.
 #
 # Failure handling: pak::pak() raises a hard error (non-zero R exit) on
 # resolution / install failure, but we still post-check installed.packages()
@@ -31,9 +29,7 @@ install.packages(
     )
 )
 pak::repo_add(
-    PPM          = "https://packagemanager.posit.co/cran/__linux__/noble/2026-05-24",
-    mlr3universe = "https://mlr-org.r-universe.dev",
-    multiverse   = "https://community.r-multiverse.org"
+    PPM = "https://packagemanager.posit.co/cran/__linux__/noble/2026-05-24"
 )
 pkgs <- c(
     # --- general data-science / dev toolkit ---
