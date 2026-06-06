@@ -125,18 +125,19 @@ RUN wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc \
 COPY install_packages.R /tmp/install_packages.R
 RUN Rscript /tmp/install_packages.R && rm /tmp/install_packages.R
 
-# Python stack. Ubuntu 24.04 ships a PEP 668 marker that
-# blocks system-wide `pip install` outside a venv; we remove it because this
-# is a single-purpose container that doesn't need PEP 668's host protection.
-# copier is a project/template scaffolding CLI.
-RUN rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED \
-    && pip install --no-cache-dir \
-        numpy \
-        pandas \
-        scikit-learn \
-        matplotlib \
-        jupyter \
-        copier
+# Python tooling. We deliberately do NOT install a global stack,
+# projects are supposed to handle this locally. Because nothing
+# here writes to the system interpreter, Ubuntu's PEP 668 EXTERNALLY-MANAGED
+# marker is left in place.
+#
+# copier (project/template scaffolding CLI) is a *tool*, not a library, so it
+# goes in as an isolated `uv` tool: its own venv under /opt/uv/tools with the
+# launcher symlinked into /usr/local/bin, so the runtime `yolo` user finds
+# `copier` on PATH (the build runs as root). The env vars are scoped to this RUN
+# so a `yolo`-user `uv tool install` at runtime still uses its own ~/.local dirs.
+RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/usr/local/bin \
+        uv tool install --no-cache copier \
+    && copier --version
 
 # air: Posit's R formatter (Rust binary). The cargo-dist installer drops the
 # binary at /root/.local/bin/air; move it to /usr/local/bin so every user

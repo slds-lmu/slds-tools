@@ -80,7 +80,8 @@ The Dockerfile is organized into commented `RUN` blocks. In order:
 3. **LaTeX / document toolchain** — pandoc, qpdf, poppler-utils, `texlive-full`.
 4. **R** — current R from the CRAN apt repo, then packages via `install_packages.R`
    (see *R packages* below).
-5. **Python** — the scientific stack (see *Python packages* below).
+5. **Python** — no global library stack; only `copier` as an isolated `uv` tool
+   (see *Python packages* below).
 6. **Tooling binaries** — `air` (R formatter), `starship` prompt, `yq`, `glow`.
 7. **Claude Code** — reinstalled `@latest` via npm, plus the launch shim
    (`claude-launch-shim.sh`) that live-bridges sessions/memory/history from the
@@ -107,15 +108,9 @@ edit that line yourself and rebuild.
 
 ## Python packages
 
-Current state: the scientific stack (`numpy`, `pandas`, `scikit-learn`,
-`matplotlib`, `jupyter`, `copier`) is installed system-wide via `pip`, after
-removing Ubuntu's PEP 668 `EXTERNALLY-MANAGED` marker. It is **not** version- or
-date-pinned today — that gap is what the `uv` migration closes.
-
-Note: `uv` is already on `PATH` in the image, but it comes from the **upstream
-base image**, not our Dockerfile — so we neither install nor pin its version
-today. The planned migration swaps the `pip` block for `uv pip install` with a
-date pin; see [`../python.md`](../python.md).
+The image **does not ship a global scientific Python stack.** . 
+Instead, projects create their own pinned environments — a per-project `uv` venv, or a `.yolobox`
+Dockerfile fragment (see *Per-project customization* below).
 
 ## Per-project customization (downstream users)
 
@@ -130,12 +125,12 @@ builds a cached *derived* image on top of this base:
 | `image = "..."` | point at a fully custom base image |
 
 There is no native Python/pip field, so **project-specific Python deps go through
-a Dockerfile fragment**. Once the `uv` migration lands (and this base ships `uv`
-on `PATH`), the whole fragment is one line:
+a Dockerfile fragment**. Since `uv` is already on `PATH`, the whole fragment is
+one line — pin with `--exclude-newer <DATE>` for reproducibility:
 
 ```dockerfile
 # .yolobox.Dockerfile
-RUN uv pip install --system <project-packages>
+RUN uv pip install --system --exclude-newer <DATE> <project-packages>
 ```
 
 See the upstream docs at <https://yolobox.dev/customizing> for the full
