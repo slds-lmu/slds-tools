@@ -53,7 +53,7 @@ MCML is out of scope for now (revisit later).
 | Instance | Base URL | Type | Auth | Notes |
 | -------- | -------- | ---- | ---- | ----- |
 | LMU Stats | `https://collab.dvb.bayern` | Server/Data Center (PAT) | `Authorization: Bearer <PAT>` | primary focus; space `lmustatistics` |
-| MCML     | _later_  | _TBD_ | _TBD_ | deferred |
+| MCML     | `https://collab.dvb.bayern` | _TBD_ | _TBD_ | space 'LMUMMCFML' |
 
 ## Access method
 
