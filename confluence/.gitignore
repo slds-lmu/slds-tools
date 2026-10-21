@@ -2,3 +2,6 @@
 .pat
 .env
 *.token
+
+# Private Information — never commit
+wiki_teaching/*

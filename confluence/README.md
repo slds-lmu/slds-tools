@@ -33,8 +33,8 @@ MCML is out of scope for now (revisit later).
   without disrupting everyone else.
 - **Two-way is required.** Not just Git → Confluence publishing — we must also be able to
   **pull web edits back**. (This is the hard constraint; see the reality check below.)
-- **Both new and existing pages.** Create new pages *and* bring existing pages under
-  local/Git management.
+- **Both new and existing pages.** Create new pages (and add them to confluence / push
+  them) *and* bring existing pages under local/Git management.
 - **No assumption of sole ownership.** Even a page *we* create lives in a shared space and
   may be edited by anyone via the web UI at any time. **Never treat a local copy as
   authoritative, and never use blind overwrite publishing.** Every write must detect and
@@ -52,7 +52,7 @@ MCML is out of scope for now (revisit later).
 
 | Instance | Base URL | Type | Auth | Notes |
 | -------- | -------- | ---- | ---- | ----- |
-| LMU      | `https://collab.dvb.bayern` | Server/Data Center (PAT) | `Authorization: Bearer <PAT>` | primary focus; space `lmustatistics` |
+| LMU Stats | `https://collab.dvb.bayern` | Server/Data Center (PAT) | `Authorization: Bearer <PAT>` | primary focus; space `lmustatistics` |
 | MCML     | _later_  | _TBD_ | _TBD_ | deferred |
 
 ## Access method
