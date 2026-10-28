@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.pat)",
+      "Edit(./.pat)",
+      "Read(./.env)",
+      "Edit(./.env)"
+    ]
+  }
+}

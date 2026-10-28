@@ -1,25 +1,26 @@
 # Confluence Access
 
-Tooling and notes for accessing the **LMU** and (potentially) **MCML** Confluence instances.
+Tooling and notes for accessing the **LMU Stats** and (potentially) **MCML** spaces of the LMU Confluence instance.
 
-> **Status:** working. Read + write round-trip against LMU Confluence proven via
-> helper scripts (`smoke-test.sh`, `get-page.sh`, `put-page.sh`, `conf-lib.sh`).
+> **Status:** working. Read + write round-trip with version guard, page creation, page
+> tree, version history and search proven against LMU Stats Confluence (2026-10-21).
 > See **[Usage](#usage)** below.
 
 > ## ⚠️ CRITICAL RULE — do not modify institute content
 >
-> The LMU Confluence content is **shared by the whole institute and NOT owned by us.**
-> **Never create, edit, move, or delete any page** except the explicitly designated
-> test page below. No writes to any other page — ever — without a fresh, explicit OK.
+> The LMU Confluence content (in both spaces) is **shared by the whole institute / all of
+> MCML and NOT owned by us.** **Never create, edit, move, or delete any page** except
+> inside the explicitly designated sandbox below. No writes to any other page — ever —
+> without a fresh, explicit OK.
 >
-> **Only writable page:** "BB Test Page" (the dedicated sandbox page).
+> **Only writable pages:** "BB Test Page" (the dedicated sandbox page) and its subpages.
 
 ## Goal
 
 Edit LMU Confluence pages **efficiently and programmatically**, instead of always
 going through the web editor by hand. Concretely:
 
-- Verify that Claude Code can reach LMU Confluence with a Personal Access Token (PAT).
+- Verify that Claude Code can reach the LMU Stats Confluence with a Personal Access Token (PAT).
 - Pull page content down locally (ideally into VS Code), edit it, and push it back.
 - Let Claude Code assist: give natural-language instructions like "edit page X to do Y"
   and have CC make the change against the live Confluence page.
@@ -50,19 +51,29 @@ MCML is out of scope for now (revisit later).
 
 ## Targets
 
-| Instance | Base URL | Type | Auth | Notes |
-| -------- | -------- | ---- | ---- | ----- |
-| LMU Stats | `https://collab.dvb.bayern` | Server/Data Center (PAT) | `Authorization: Bearer <PAT>` | primary focus; space `lmustatistics` |
-| MCML     | `https://collab.dvb.bayern` | _TBD_ | _TBD_ | space 'LMUMMCFML' |
+Both spaces live on the same Confluence instance (BayernCollab, Confluence Data Center
+9.2.26), so one access token is used for both — and every other space your LMU account can access.
+
+| Space | Base URL | Type | Auth | Notes |
+| ----- | -------- | ---- | ---- | ----- |
+| LMU Stats | `https://collab.dvb.bayern` | Data Center 9.2.26 (PAT) | `Authorization: Bearer <PAT>` | primary focus; space `lmustatistics` |
+| MCML     | `https://collab.dvb.bayern` | same instance | same PAT | space `LMUMMCFML`; deferred and NOT TESTED |
 
 ## Access method
 
-Confluence **REST API** over HTTPS.
+Confluence **REST API** over HTTPS (see [Documentation](#documentation) below).
 
 - Server/DC base path: `<base>/rest/api/...`
-- Read a page:   `GET  /rest/api/content/{id}?expand=body.storage,version`
-- Update a page: `PUT  /rest/api/content/{id}` (must increment `version.number`)
-- Search:        `GET  /rest/api/content/search?cql=...`
+- Read a page:   `GET  /rest/api/content/{id}?expand=body.storage,version,ancestors`
+- Update a page: `PUT  /rest/api/content/{id}` (`version.number` must be exactly
+  current + 1, otherwise rejected)
+- Create a page: `POST /rest/api/content` (parent via `ancestors`)
+- Page tree:     `GET  /rest/api/content/search?cql=type=page and ancestor={id}`, or
+  for a whole space: `GET /rest/api/space/{key}/content/page?depth=all` 
+- Version history:  `GET  /rest/experimental/content/{id}/version` (undocumented, see
+  [below](#instance-quirks-bayerncollab-confluence-9226))
+- Old version:   `GET  /rest/api/content/{id}?status=historical&version={n}`
+- Full-text search: `GET  /rest/api/search?cql=...&excerpt=highlight`
 
 **Page body format.** Confluence stores pages in *storage format* (an XHTML dialect),
 not Markdown. So a local editing workflow needs a strategy for the body:
@@ -77,10 +88,11 @@ analysis given the two-way requirement.
 
 ## Authentication
 
-- PAT already created on LMU Confluence (Server/DC personal access token).
+- PAT created on LMU Confluence (Server/DC personal access token).
 - Sent as `Authorization: Bearer <PAT>` header.
 - Secret stored outside the repo (e.g. env var `LMU_CONFLUENCE_PAT` or a gitignored
   `.env` / secrets file). **Never commit the token.**
+- Setup: see [below](#0-one-time-setup-provide-the-token).
 
 ## Scope
 
@@ -92,28 +104,41 @@ analysis given the two-way requirement.
 
 All commands run from this directory (`confluence/`). They need the PAT, which the
 scripts read from a gitignored `.pat` file or the `LMU_CONFLUENCE_PAT` env var.
+Local paths — where pulled pages go (`-d <pages-dir>`) and the exclude list
+(`-x <exclude-file>`) — are always passed explicitly to the scripts.
 
 ### Files
 
 | File | Purpose |
 | ---- | ------- |
-| `conf-lib.sh`   | Shared helpers (token resolution, authenticated `curl`). Sourced by the others. |
-| `smoke-test.sh` | One-shot read-only connectivity/auth check against a known page. |
-| `get-page.sh`   | Download a page's storage-format body to a local `.xhtml` file. |
-| `put-page.sh`   | Upload a local `.xhtml` body back to a page (auto-increments version). |
-| `.pat`          | Your Personal Access Token. **Gitignored — never commit.** |
+| `conf-lib.sh`     | Shared helpers (token resolution, authenticated `curl`, handling exclude list). Sourced by the others. |
+| `smoke-test.sh`   | One-shot read-only connectivity/auth check against a known page. |
+| `get-page.sh`     | Download a page into `<pages-dir>`: a working copy, an untouched copy, and version metadata. |
+| `put-page.sh`     | Push an existing working copy back, guarded against concurrent edits; shows the diff. |
+| `create-page.sh`  | Create a subpage from `.xhtml` or `.md` (via pandoc), pushes and pulls new online page back. |
+| `page-tree.sh`    | Page tree below some page, as Markdown (titles only). |
+| `page-history.sh` | Complete version history of a page: number, date, author, edit message. |
+| `search.sh`       | Full-text search (CQL) with excerpts. |
+| `.pat`            | Your Personal Access Token. **Gitignored — never commit.** |
+| `.claude/settings.json` | Denies Claude Code's file tools access to `.pat` and `.env`. |
 
 ### 0. One-time setup: provide the token
 
+Create a PAT in Confluence: Avatar → **Settings → Personal Access Tokens → Create token**.
+Set an **expiry** (e.g. 1–2 weeks): a PAT has *all* the permissions of your account and
+cannot be restricted to certain pages or spaces, so a short lifetime is the main
+protection. Revoke it there when you're done.
+
 ```bash
-# Either drop the PAT into a gitignored file…
-printf '%s' 'YOUR_PAT_HERE' > .pat
-# …or export it for the shell session:
+# Either drop the PAT into a gitignored file, but without leaking to shell history…
+read -rs pat && printf '%s' "$pat" > .pat
+# …or export it for this shell session:
 export LMU_CONFLUENCE_PAT='YOUR_PAT_HERE'
 ```
 
-Create a PAT in Confluence: avatar → **Settings → Personal Access Tokens → Create token**.
-Revoke it there when you're done.
+Do not have the token enter the chat session, also not by invoking a command inside the session.
+The scripts never print the token and don't expose it.
+Don't use `curl -v` with `conf_curl`, since it prints the `Authorization` header.
 
 ### 1. Read access
 
@@ -123,68 +148,112 @@ Quick connectivity check:
 ./smoke-test.sh            # GET a known page, prints JSON + HTTP status
 ```
 
-Download a page body to edit locally:
+Download a page to edit locally:
 
 ```bash
-./get-page.sh 2781779130                 # -> page-2781779130.xhtml
-./get-page.sh 2781779130 mypage.xhtml    # custom output filename
+./get-page.sh -d <pages-dir> [-x <exclude-file>] [-f] <page-id>
 ```
 
-The saved file is the page's **storage format** (Confluence's XHTML dialect), ready
-to open in VS Code.
+It writes three files into `<pages-dir>`, identified by page ID:
 
-**Finding a page's ID:** it's in the page URL
-(`/pages/<ID>/Title`), or search by title:
+| File | Purpose |
+| ---- | ------- |
+| `<id>_<title>.xhtml`        | working copy — edit this one |
+| `<id>_<title>.pulled.xhtml` | untouched copy as pulled — for the diff and for reverting |
+| `<id>_<title>.meta.json`    | Metadata: title, space, URL, ancestors, version (number, time, author, message), pull time |
 
-```bash
-source ./conf-lib.sh
-conf_curl --get "$CONF_BASE/rest/api/content/search" \
-  --data-urlencode 'cql=title="BB Test Page"' | python3 -m json.tool
-```
+- `-x`: refuses pages in the exclude list (or subpages of excluded pages).
+- Refuses to overwrite an already existing working copy that has local edits; `-f` forces it.
+- The saved body is the page's **storage format** (Confluence's XHTML dialect), ready to open in VS Code.
+
+**Finding a page's ID:** it's in the page URL (`/pages/<ID>/Title`), in the output of
+`page-tree.sh`, or via `search.sh`.
 
 ### 2. Write access
 
 ```bash
-./put-page.sh <page-id> <bodyfile> ["edit message"]
+./put-page.sh -d <pages-dir> [-n] <page-id> "<edit message>"
 ```
 
-- It fetches the current version, increments it, and PUTs the new body.
-- **Safety guard:** `put-page.sh` refuses any page except the sandbox
-  (ID `2781779130`). To target another page you must *deliberately* set
-  `CONF_ALLOW_ANY_PAGE=1` — a friction point on purpose (see the critical rule above).
-- ⚠️ **Lost-update risk:** it currently increments from *whatever the latest version is*,
-  so if someone edited the page in the web UI after you pulled, your push silently
-  overwrites their change. See [the concurrency note](#the-lost-update-problem-shared-pages).
+- Pushes `<pages-dir>/<id>_<title>.xhtml`. The edit message is required (non-empty);
+  it shows up in the page history.
+- **Version guard:** re-GETs the live page and refuses if its version number or last-edit
+  time differs from the local copy, i.e., if someone edited it since the pull.
+  In this case, you must save your edits, pull again (`-f`) and redo them.
+  The PUT sends `version = pulled + 1`, so Confluence itself rejects (HTTP 409) an edit
+  that lands between the check and the write.
+- Prints the diff against the `.pulled` copy; `-n` stops there (dry run).
+- After the push it re-pulls the page, so the local files and `.meta.json` match the new
+  version.
+- **Safety guard:** Currently refuses any page outside the sandbox (BB Test Page and subpages).
+  To target another page you must *deliberately* set `CONF_ALLOW_ANY_PAGE=1` — a friction
+  point on purpose (see the critical rule above).
 
 Typical manual round-trip:
 
 ```bash
-./get-page.sh 2781779130          # 1. pull
-code page-2781779130.xhtml         # 2. edit in VS Code, save
-./put-page.sh 2781779130 page-2781779130.xhtml "tweak wording"   # 3. push
+./get-page.sh -d <pages-dir> 2781779130                      # 1. pull
+code <pages-dir>/2781779130_BB-Test-Page.xhtml                # 2. edit in VS Code, save
+./put-page.sh -d <pages-dir> -n 2781779130 "tweak wording"    # 3. check the diff
+./put-page.sh -d <pages-dir> 2781779130 "tweak wording"       # 4. push
 ```
 
-### 3. Editing via Claude Code (the assisted workflow)
+### 3. Creating a page
+
+```bash
+./create-page.sh -d <pages-dir> <parent-id> "<title>" [bodyfile]
+```
+
+- Confluence assigns the page ID. Titles must be unique within a space (otherwise rejected).
+- `bodyfile`: storage XHTML, or Markdown (`*.md`), converted locally to XHTML with
+  `pandoc -f gfm -t html` — plain structure only (headings, lists, tables, links, code),
+  no Confluence macros.
+  Default: empty page.
+- Then pulls the new page into `<pages-dir>`; from there on it is edited like any other.
+- Same safety guard as `put-page.sh`: the parent must be in the sandbox.
+
+### 4. Finding information: tree, history, search
+
+```bash
+./page-tree.sh <root-page-id | space-key> > <file>.md   # Markdown tree: titles, IDs, versions
+./page-history.sh [-x <exclude-file>] <page-id>         # lists all versions, newest first
+./search.sh [-x <exclude-file>] [-s <space-key>] [-a <ancestor-id>] [-n <max>] "<text>"
+```
+
+- `page-tree.sh` fetches titles and version info only, never page contents, so it has no
+  exclude option. Sorted like the web UI.
+- `search.sh`: default space `lmustatistics`; `-a` restricts to a subtree; all results by
+  default, each page only once, with highlighted excerpts. Matches word forms too (e.g. "exam" also
+  finds "exams").
+
+**Exclude list** (`-x`): a text file with one page ID per line, `#` starts a comment. An
+excluded page *and its whole subtree* are never downloaded (`get-page.sh`), searched
+(`search.sh`), or their history listed (`page-history.sh`). Of course, the PAT could
+still do all of this, only the scripts refuse to.
+
+### 5. Editing via Claude Code (the assisted workflow)
 
 The point of this setup: instead of hand-editing XHTML, describe the change and let
 CC do it. A session looks like:
 
 1. **You:** "Pull BB Test Page and add a section listing the exam dates."
-2. **CC:** runs `./get-page.sh 2781779130`, opens `page-2781779130.xhtml`, edits the
-   storage XHTML with its normal file tools (precise, targeted edits — not a blind
-   full rewrite), then runs `./put-page.sh 2781779130 page-2781779130.xhtml "..."`.
-3. **CC:** re-reads the page to confirm the new version and reports back.
+2. **CC:** runs `./get-page.sh -d <pages-dir> 2781779130`, edits the working copy with its
+   normal file tools (precise, targeted edits — not a blind full rewrite), shows the diff
+   with `./put-page.sh -n ...`.
+3. **CC:** pushes with `put-page.sh`, which re-pulls the page, confirming the new version,
+   and CC reports back.
 
 Guidelines for CC in this repo:
-- **Never write to any page but the sandbox** without a fresh explicit OK (see the
-  critical rule). Reads of any page are fine.
+- **Never write to any page outside the sandbox** without a fresh explicit OK (see the
+  critical rule). Reads of any page are fine — except those in the exclude list: always
+  pass `-x` when one exists.
 - Prefer **small, surgical edits** to the storage XHTML over regenerating the whole
   body — institute pages use macros/layouts that are easy to clobber.
-- Always **re-GET after a PUT** to confirm the version bumped and the change landed.
-- Keep a pre-edit copy (the freshly-fetched `.xhtml`) so a bad edit can be reverted
-  by PUT-ing the original back.
+- Never use `-f` (overwrites local edits) or `CONF_ALLOW_ANY_PAGE=1` without asking.
+- A bad edit can be reverted from the `.pulled` copy of the previous version, or from the
+  page history.
 
-### 4. Editing manually (no Claude Code, no scripts)
+### 6. Editing manually (no Claude Code, no scripts)
 
 You can also talk to the API directly, or skip the API entirely:
 
@@ -368,17 +437,18 @@ exists anyone may edit it — we never solely own it.
 
 Because colleagues edit via the web UI, this matters more than format:
 
-- The REST `PUT` uses **optimistic version numbers**. If you pull version *N*, someone
-  saves *N+1* in the browser, and you then push *N+1* from your stale copy, **their edit
-  is overwritten** with no warning.
-- **Mitigation (recommended before any real-page writes):** capture the version at pull
-  time and make the push *conditional* — re-GET just before writing and **refuse if the
-  version moved** since pull (i.e. set `version.number = pulled + 1` and let Confluence
-  reject a stale number, rather than blindly using `current + 1`). Our `put-page.sh`
-  currently does the blind thing; this is the first hardening to add when we go beyond the
-  sandbox.
+- The REST `PUT` uses **optimistic version numbers**: Confluence only accepts
+  `version.number = current + 1` and answers HTTP 409 otherwise. So if you pull
+  version *N*, someone saves *N+1* in the browser, and you then push *N+1* from your stale
+  copy, Confluence rejects it.
+- The real risk is a client that reads the *current* version right before pushing and
+  sends `current + 1` — that always succeeds and **silently overwrites** the other edit.
+  Tools like `mark`/`md2cf` might behave the same way.
 - This is also *why* shared pages favour Model A with small surgical edits and a fresh
   pull immediately before each push.
+- **Our mitigation** (inside `put-page.sh`): record the version at pull time (`.meta.json`),
+  re-GET just before writing and **refuse if version number or edit time moved**, and send
+  `pulled + 1` so Confluence also rejects anything that slips in between.
 
 ### Recommendation
 
@@ -392,10 +462,10 @@ Because colleagues edit via the web UI, this matters more than format:
 - **Non-negotiable across all models:** writes use optimistic concurrency — re-check the
   live version immediately before pushing and **abort on any concurrent change** rather
   than overwrite. We never assume sole ownership of a page.
-- Next concrete steps if you want to proceed: (1) **add the version-guard to `put-page.sh`**
-  (the prerequisite for any safe real-page write), (2) install `mark` + `pandoc` via the
+- Next concrete steps if you want to proceed: (1) ✅ version-guard to `put-page.sh`
+  (the prerequisite for any safe real-page write) -> **already done**, (2) install `mark` + `pandoc` via the
   package-manager skill (with manifest), (3) try Model A and a version-guarded `mark`
-  Model-B publish on **BB Test Page** to compare the feel.
+  Model-B publish on BB Test Page to compare the feel.
 
 ## Plan / Steps
 
@@ -405,29 +475,70 @@ Because colleagues edit via the web UI, this matters more than format:
 3. ✅ **Read a page** by ID, save `body.storage` to a local file (`get-page.sh`).
 4. ✅ **Round-trip:** modify the local file, `PUT` it back with incremented version,
    verify (`put-page.sh`). Confirmed on BB Test Page (v2 → v5).
-5. ⏳ **Add a version-guard** to `put-page.sh` (re-check live version, reject stale writes).
-   **Prerequisite for any real-page write** — we never assume sole ownership of a page.
-6. ⏳ Answer the **Markdown-fidelity** question (decides how usable Model C is).
-7. ⏳ Trial **Model A** and a version-guarded **`mark`** (Model B) on the sandbox.
-8. ⏳ (Later) Generalize so CC can act on "edit page X" instructions for real pages
-   (still gated by the critical no-touch rule).
+5. ✅ **Add a version-guard** to `put-page.sh` (re-check live version, reject stale writes).
+   Tested 2026-10-21 on BB Test Page.
+6. ✅ **Local files + metadata**
+   in a given pages directory (`get-page.sh -d`), diff and dry run before push, re-pull after push.
+7. ✅ **Page tree, version history, search** (`page-tree.sh`, `page-history.sh`,
+   `search.sh`) incl. the exclude list.
+8. ⏳ Answer the **Markdown-fidelity** question (decides how usable Model C is).
+9. ⏳ Trial **Model A** and a version-guarded **`mark`** (Model B) on the sandbox.
+10. ⏳ (Later) Generalize so CC can act on "edit page X" instructions for real pages
+    (still gated by the critical no-touch rule).
 
 ### Notes from smoke test (2026-06-08)
 
 - Page body is rich storage-format XHTML: `<ac:layout>` columns,
   `<ac:structured-macro>`, `<ac:link><ri:page>`, emoticons. Hand-editing raw is
   doable but fiddly — argues for eventually doing targeted edits, not full rewrites.
-- A write (`PUT`) must set `version.number` to `current + 1` (currently 23 → next 24).
+- A write (`PUT`) must set `version.number` to exactly `current + 1`; anything else is
+  rejected with HTTP 409.
+
+## Instance quirks (BayernCollab, Confluence 9.2.26)
+
+Found while testing on 2026-10-21.
+
+- `GET /rest/api/content/{id}/descendant/page` answers HTTP 500 (even without
+  parameters), in contrast to official documentation → Our scripts use CQL `ancestor = {id}`
+  instead. `/descendant` (without `/page`) and `/child/page` work.
+- `GET /rest/experimental/content/{id}/version` (complete version history of a page incl
+  author, time, message) is **not in the documented 9.2 API, but still works** → used by
+  `page-history.sh`. The documented `/rest/api/content/{id}/version` doesn't exist.
+- Errors usually come as JSON with `statusCode`; unknown paths answer with `status-code`
+  instead.
+- Updates (pushes) don't need the `space` field (accepted without it); a nonexistent space
+  key is rejected with HTTP 400. Danger: With a *different existing* space the page might be moved
+  (this was NOT TESTED ON PURPOSE) → `put-page.sh` doesn't use the `space` field.
+- Converted Markdown (to plain HTML) pages are accepted as new pages almost unchanged; only `id`
+  attributes on headings are dropped.
 
 ## Reference
 
 - Base URL: `https://collab.dvb.bayern`
 - REST base: `https://collab.dvb.bayern/rest/api`
 - Read-only example page: ID `663984308` ("Teaching & Exams (Lehre)") — **do not edit.**
-- **Writable sandbox page** (the ONLY page we may modify): "BB Test Page",
-  ID `2781779130`, space `lmustatistics`, currently empty body.
+- **Writable sandbox** (the ONLY pages we may modify): "BB Test Page",
+  ID `2781779130`, space `lmustatistics`, **and its subpages**.
   URL `https://collab.dvb.bayern/spaces/lmustatistics/pages/2781779130/BB+Test+Page`
-- PAT passed via env var `LMU_CONFLUENCE_PAT` (not committed; revoked at end of session).
+- PAT read from `.pat` or env var `LMU_CONFLUENCE_PAT` (not committed; short expiry,
+  revoked at end of session).
+
+### Documentation
+
+- [Confluence Data Center REST API 9.2.3](https://developer.atlassian.com/server/confluence/rest/v923/intro/)
+  — closest documented version to our 9.2.26;
+  [OpenAPI spec](https://dac-static.atlassian.com/server/confluence/9.2.3.swagger.v3.json)
+  (machine-readable, all endpoints + parameters).
+- [Latest Data Center REST API (v1000)](https://developer.atlassian.com/server/confluence/rest/v1000/intro/);
+  the [older overview page](https://developer.atlassian.com/server/confluence/confluence-server-rest-api/)
+  covers only Server 5.5–8.5.
+- [Using Personal Access Tokens](https://confluence.atlassian.com/enterprise/using-personal-access-tokens-1026032365.html)
+  (Data Center; expiry, permissions = those of the creating user). Part of the general
+  [Atlassian Data Center documentation](https://confluence.atlassian.com/enterprise/atlassian-data-center-documentation-892801292.html)
+  (admin docs, not the API).
+- [Advanced searching using CQL](https://developer.atlassian.com/server/confluence/advanced-searching-using-cql/)
+- [Confluence storage format](https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html)
+- [KB: retrieve all previous versions of content via REST](https://confluence.atlassian.com/confkb/how-to-retrieve-all-previous-versions-of-content-using-the-rest-api-1044789048.html)
 
 ## Open questions
 
@@ -436,3 +547,4 @@ Because colleagues edit via the web UI, this matters more than format:
   Markdown enough?
 - For two-way on shared pages: is lossless **Model A** (storage XHTML in Git) acceptable
   as the primary workflow, with Markdown reserved for new/simple pages?
+- Same token + exact same setup should work for MCML Confluence space, not tested yet
